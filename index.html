@@ -2,7 +2,16 @@
 <html lang="en-GB">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2c5f86" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#12171c" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Deals">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>Property Deal Appraisals</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -214,6 +223,65 @@ tr.pass td:first-child{box-shadow:inset 3px 0 var(--good)} tr.fail td:first-chil
 #rulesDlg .form{grid-template-columns:1fr 1fr}
 @media (max-width:600px){#rulesDlg .form{grid-template-columns:1fr}}
 .printonly{display:none}
+.mback,.menubtn,.installbar{display:none}
+body{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+.topbar{padding-top:max(16px, env(safe-area-inset-top))}
+.installbar{align-items:center;justify-content:space-between;gap:10px;margin:12px 20px 0;padding:10px 14px;border-radius:8px;background:var(--accent-soft);color:var(--ink);font-size:.9rem}
+.installbar.show{display:flex}
+@media (max-width:900px){
+  html,body{font-size:15px}
+  input,select,textarea{font-size:16px!important}
+  .btn,.chip,.tab{min-height:40px}
+  .chip{padding:6px 12px}
+  .topbar{padding:10px 12px;padding-top:max(10px, env(safe-area-inset-top));position:sticky;top:0;z-index:20;flex-wrap:nowrap;gap:8px}
+  .topbar.menu-open{flex-wrap:wrap}
+  .topbar h1{font-size:1.05rem;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .topbar>div:first-child{min-width:0}
+  .topbar .head-actions{flex-wrap:nowrap}
+  .topbar .head-actions .btn{flex:0 0 auto;padding:7px 10px}
+  .topbar.menu-open .head-actions .btn{flex:1 1 auto}
+  body.m-detail .installbar{display:none!important}
+  .topbar .sub{display:none}
+  .topbar .head-actions{gap:6px}
+  .menubtn{display:inline-block}
+  .topbar:not(.menu-open) #btnAdd,.topbar:not(.menu-open) #btnRules,.topbar:not(.menu-open) .who{display:none}
+  .topbar.menu-open .head-actions{flex-direction:column;align-items:stretch;width:100%}
+  .topbar.menu-open .who{display:flex;flex-direction:column;align-items:stretch}
+  .topbar.menu-open .who span{padding:4px 2px}
+  body.m-detail aside.list,body.m-detail .addbar{display:none!important}
+  body:not(.m-detail) #detail,body:not(.m-detail) .mback{display:none!important}
+  .mback{display:flex;align-items:center;gap:6px;position:sticky;top:var(--hdr,56px);z-index:15;background:var(--paper);border:none;padding:8px 2px;font-weight:600;color:var(--accent);width:100%;text-align:left}
+  .shell{padding:10px 12px 40px}
+  .panel{padding:14px}
+  .head-actions .btn{flex:1 1 auto}
+  .tiles{grid-template-columns:1fr 1fr}
+  .tile .v{font-size:1.05rem}
+  .verdict{font-size:.92rem}
+  .tabs{position:sticky;top:calc(var(--hdr,56px) + 40px);background:var(--card);z-index:10;margin:0 -14px;padding:0 8px}
+  table.stackable thead{display:none}
+  table.stackable,table.stackable tbody,table.stackable tr,table.stackable td{display:block;width:100%}
+  table.stackable tr{border:1px solid var(--line);border-radius:8px;margin-bottom:10px;padding:6px 10px}
+  table.stackable td{display:grid;grid-template-columns:42% 1fr;gap:8px;align-items:center;border-bottom:none;padding:4px 0;text-align:left!important}
+  table.stackable td::before{content:attr(data-label);color:var(--muted);font-size:.8rem}
+  table.stackable td[data-label=""]{grid-template-columns:1fr}
+  table.stackable td[data-label=""]::before{display:none}
+  table.stackable tr.subject{background:var(--accent-soft)}
+  table.stackable tr.pass,table.stackable tr.fail{box-shadow:none}
+  table.stackable tr.pass{border-left:4px solid var(--good)} table.stackable tr.fail{border-left:4px solid var(--bad)}
+  table.stackable tr.pass td:first-child,table.stackable tr.fail td:first-child{box-shadow:none}
+  table.edit input.txt{min-width:0}
+  table.refurb tr{display:grid;grid-template-columns:1fr 1fr 1.2fr 1fr auto;gap:6px 8px;align-items:end}
+  table.refurb td{display:flex;flex-direction:column;align-items:stretch;gap:2px;padding:0}
+  table.refurb td::before{font-size:.72rem}
+  table.refurb td:first-child{grid-column:1/-1}
+  table.refurb td[data-label="Cost"]{padding-bottom:8px}
+  table.refurb tr.subject{grid-template-columns:1fr auto}
+  table.refurb tr.subject td:first-child{grid-column:auto}
+  .ladder{grid-template-columns:repeat(5,minmax(0,1fr))}
+  dl.kv{grid-template-columns:1fr}
+  dl.kv dd{margin-bottom:6px}
+  .installbar{margin:10px 12px 0}
+}
 @media print{
   :root{--paper:#fff;--card:#fff}
   .topbar .head-actions,.addbar,.banner,aside.list,.tabs,#marginPanel input,.head-actions,.rowbtns,.iconbtn,#authPanel,dialog{display:none!important}
@@ -236,6 +304,7 @@ tr.pass td:first-child{box-shadow:inset 3px 0 var(--good)} tr.fail td:first-chil
     <div class="sub">Value-add buys in England: comparables, layout, planning, works, finance, sell or hold</div>
   </div>
   <div class="head-actions" id="appActions" hidden>
+    <button class="btn menubtn" id="btnMenu" type="button" aria-expanded="false" aria-controls="appActions">Menu</button>
     <button class="btn addtoggle" id="btnAddToggle" type="button" aria-expanded="false" aria-controls="addForm">Add links</button>
     <button class="btn" id="btnAdd" type="button">Add a deal by hand</button>
     <button class="btn" id="btnRules" type="button">Your rules</button>
@@ -272,6 +341,7 @@ tr.pass td:first-child{box-shadow:inset 3px 0 var(--good)} tr.fail td:first-chil
   <button class="btn primary" type="submit" id="addSubmit">Add for appraisal</button>
   <p class="small muted addhelp">New links show as <b>Waiting for appraisal</b>. Claude checks for them every few hours and fills in the comparables, layout, planning, costs and returns. To get one done straight away, ask Claude to "appraise my waiting deals".</p>
 </form>
+<div class="installbar" id="installBar" role="region" aria-label="Install the app"><span id="installText">Install Deals on this device for one-tap access.</span><span style="display:flex;gap:6px"><button class="btn primary" type="button" id="btnInstall">Install</button><button class="btn" type="button" id="btnInstallNo">Not now</button></span></div>
 <div class="banner" id="banner" hidden></div>
 
 <main class="shell" id="appMain" hidden>
@@ -283,6 +353,7 @@ tr.pass td:first-child{box-shadow:inset 3px 0 var(--good)} tr.fail td:first-chil
     <div class="filter" role="group" aria-label="Filter by status" id="filters"></div>
     <div class="list" id="dealList"></div>
   </aside>
+  <button class="mback" id="btnBack" type="button" aria-label="Back to all deals">← All deals</button>
   <section class="detail" id="detail" aria-live="polite"></section>
 </main>
 
@@ -618,7 +689,7 @@ function refurbHtml(d){
       <td class="r num" data-wtot="${k}">${gbp((Number(x.qty)||0)*(Number(x.rate)||0))}</td>
       <td><button class="iconbtn" type="button" data-widel="${k}" ${dis} aria-label="Remove ${esc(x.item)}">✕</button></td></tr>`).join("");
   return `<div class="panel"><div class="head"><h3>Refurb estimate, room by room</h3><span class="save-state" id="wiState"></span></div>
-    ${items.length ? `<div class="tablewrap"><table class="edit"><thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Rate (£)</th><th class="r">Cost</th><th></th></tr></thead>
+    ${items.length ? `<div class="tablewrap"><table class="edit stackable refurb"><thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Rate (£)</th><th class="r">Cost</th><th></th></tr></thead>
       <tbody>${rows}<tr class="subject"><td colspan="4"><b>Total before contingency</b> <span class="muted small">(build cost in the assumptions: ${gbp(wc)})</span></td><td class="r num" id="wiTotal"><b>${gbp(total)}</b></td><td></td></tr></tbody></table></div>`
       : `<p class="small muted">No line-by-line estimate yet. Start from a template, then change the quantities and rates to match the quotes you get.</p>`}
     <div class="rowbtns">
@@ -664,7 +735,7 @@ function exitsHtml(d){
   }).join("");
   return `<div class="stack">
     <p class="small muted" style="margin:0">Compare ways of doing this deal side by side. Each option starts from the base assumptions and changes only what you edit here. Green edge means it passes your rules on at least one route.</p>
-    <div class="tablewrap"><table class="edit"><thead><tr><th>Option</th>${SC_FIELDS.map(([,l]) => `<th>${l}</th>`).join("")}<th class="r">If sold</th><th class="r">If rented: left in</th><th>Your rules</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="tablewrap"><table class="edit stackable"><thead><tr><th>Option</th>${SC_FIELDS.map(([,l]) => `<th>${l}</th>`).join("")}<th class="r">If sold</th><th class="r">If rented: left in</th><th>Your rules</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="rowbtns"><button class="btn" type="button" data-scadd ${dis}>Add an option</button><span class="save-state" id="scState"></span></div>
   </div>`;
 }
@@ -680,7 +751,7 @@ function compareHtml(){
       <td class="r num">${gbp(r.hold.leftIn)}</td><td class="r num">${gbp(r.hold.cashflow/12)}</td>
       <td>${a.sellPass ? `<span class="badge b-pass">Sell ✓</span>` : `<span class="badge b-fail">Sell ✗</span>`} ${a.holdPass ? `<span class="badge b-pass">Rent ✓</span>` : `<span class="badge b-fail">Rent ✗</span>`}</td></tr>`; }).join("");
   return `<div class="panel"><div class="head"><h2>All deals side by side</h2><button class="btn" type="button" id="btnCloseCompare">Back to the deal</button></div>
-    <div class="tablewrap" style="margin-top:12px"><table class="compare"><thead><tr><th>Deal</th><th class="r">Price</th><th class="r">Max offer</th><th class="r">Value after</th><th class="r">Profit if sold</th><th class="r">On cost</th><th class="r">Per year</th><th class="r">Left in</th><th class="r">Cash flow/m</th><th>Your rules</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    <div class="tablewrap" style="margin-top:12px"><table class="compare stackable"><thead><tr><th>Deal</th><th class="r">Price</th><th class="r">Max offer</th><th class="r">Value after</th><th class="r">Profit if sold</th><th class="r">On cost</th><th class="r">Per year</th><th class="r">Left in</th><th class="r">Cash flow/m</th><th>Your rules</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 
 /* ---------- Profit-margin sliders ---------- */
@@ -1011,6 +1082,56 @@ document.getElementById("rulesForm").addEventListener("submit", async e => {
   catch(_){ $("#rulesErr").textContent = "Couldn't save the rules just now. Try again."; }
 });
 
+/* ---------- Phone layout ---------- */
+const isPhone = () => window.matchMedia("(max-width: 900px)").matches;
+function setHeaderHeight(){ const h = document.querySelector(".topbar"); if (h) document.documentElement.style.setProperty("--hdr", h.offsetHeight + "px"); }
+window.addEventListener("resize", setHeaderHeight); setTimeout(setHeaderHeight, 0);
+function showDetailView(){
+  if (!isPhone()) return;
+  if (!document.body.classList.contains("m-detail")){ document.body.classList.add("m-detail"); try{ history.pushState({ view: "detail" }, ""); }catch(_){} }
+  window.scrollTo(0, 0);
+}
+function showListView(){ document.body.classList.remove("m-detail"); }
+window.addEventListener("popstate", () => showListView());
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-id],#btnCompare,#btnBack,#btnMenu,#btnInstall,#btnInstallNo");
+  if (!t) return;
+  if (t.id === "btnBack"){ if (history.state && history.state.view === "detail") history.back(); else showListView(); return; }
+  if (t.id === "btnMenu"){ const h = document.querySelector(".topbar"); const open = h.classList.toggle("menu-open"); t.setAttribute("aria-expanded", String(open)); t.textContent = open ? "Close" : "Menu"; setHeaderHeight(); return; }
+  if (t.id === "btnInstall"){ doInstall(); return; }
+  if (t.id === "btnInstallNo"){ hideInstall(true); return; }
+  if (t.dataset.id || t.id === "btnCompare") setTimeout(showDetailView, 0);
+});
+document.addEventListener("click", e => { // close the phone menu after choosing something in it
+  const h = document.querySelector(".topbar");
+  if (h.classList.contains("menu-open") && e.target.closest("#btnAdd,#btnRules,#btnPw,#btnSignOut,#btnAddToggle")){ h.classList.remove("menu-open"); const m = $("#btnMenu"); m.textContent = "Menu"; m.setAttribute("aria-expanded", "false"); setHeaderHeight(); }
+});
+function labelTables(root){
+  root.querySelectorAll("table.stackable").forEach(t => {
+    const heads = [...t.querySelectorAll("thead th")].map(th => th.textContent.trim());
+    t.querySelectorAll("tbody tr").forEach(tr => [...tr.children].forEach((td, k) => { if (!td.hasAttribute("data-label")) td.setAttribute("data-label", tr.classList.contains("subject") ? "" : (heads[k] || "")); }));
+  });
+}
+new MutationObserver(() => labelTables(document.getElementById("detail"))).observe(document.getElementById("detail"), { childList: true, subtree: true });
+
+/* ---------- Installable app ---------- */
+let installEvt = null;
+const isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function installDismissed(){ try{ return localStorage.getItem("installDismissed") === "1"; }catch(_){ return false; } }
+function hideInstall(remember){ $("#installBar").classList.remove("show"); if (remember){ try{ localStorage.setItem("installDismissed", "1"); }catch(_){} } }
+function offerInstall(){
+  if (isStandalone() || installDismissed()) return;
+  if (installEvt){ $("#installText").textContent = "Install Deals on this device for one-tap access."; $("#btnInstall").hidden = false; $("#installBar").classList.add("show"); }
+  else if (isIOS()){ $("#installText").textContent = "To install: tap the Share button, then “Add to Home Screen”."; $("#btnInstall").hidden = true; $("#installBar").classList.add("show"); }
+}
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; offerInstall(); });
+window.addEventListener("appinstalled", () => hideInstall(true));
+async function doInstall(){ if (!installEvt) return; installEvt.prompt(); try{ await installEvt.userChoice; }catch(_){} installEvt = null; hideInstall(false); }
+if ("serviceWorker" in navigator && location.protocol === "https:"){
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+
 /* ---------- Saving ---------- */
 let inputTimer = null, notesTimer = null, writing = Promise.resolve();
 function queueWrite(fn){ writing = writing.then(fn, fn); return writing; }
@@ -1191,6 +1312,7 @@ function showApp(session){
     return;
   }
   $("#whoEmail").textContent = session.user.email || "";
+  setTimeout(offerInstall, 1500);
   state.db = shimDb;
   if (!channel){
     channel = SB.channel("deals-changes")
