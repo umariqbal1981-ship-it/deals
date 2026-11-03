@@ -184,6 +184,47 @@ input[type=range]{width:100%;accent-color:var(--accent);height:28px;margin:0}
 .ladder button{border:1px solid var(--line);background:var(--paper);border-radius:6px;padding:6px 4px;text-align:center;font-size:.78rem;color:var(--muted);display:grid;gap:2px}
 .ladder button b{font-family:var(--mono);font-weight:500;color:var(--ink);font-size:.82rem}
 .ladder button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.chk{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:900px){.chk{grid-template-columns:1fr}}
+.chk ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.chk li{display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:baseline;font-size:.88rem}
+.chk li .val{font-family:var(--mono);font-size:.84rem;white-space:nowrap}
+.ok{color:var(--good);font-weight:700} .no{color:var(--bad);font-weight:700} .na{color:var(--muted)}
+.badge{display:inline-block;border-radius:999px;padding:3px 10px;font-size:.78rem;font-weight:700}
+.b-pass{background:var(--good-soft);color:var(--good)} .b-fail{background:var(--bad-soft);color:var(--bad)} .b-na{background:var(--accent-soft);color:var(--accent)}
+.be{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:14px}
+.be div{border:1px dashed var(--line);border-radius:6px;padding:8px 10px;font-size:.85rem}
+.be b{font-family:var(--mono);font-weight:500;display:block;font-size:1rem}
+.risk{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;align-items:start;padding:10px 0;border-bottom:1px solid var(--line)}
+.risk:last-child{border-bottom:none}
+.rdot{display:inline-block;min-width:64px;text-align:center;border-radius:999px;padding:2px 8px;font-size:.74rem;font-weight:700}
+.r-green{background:var(--good-soft);color:var(--good)} .r-amber{background:var(--warn-soft);color:var(--warn)} .r-red{background:var(--bad-soft);color:var(--bad)} .r-unknown{background:var(--accent-soft);color:var(--accent)}
+table.edit input,table.edit select{width:100%;min-width:60px;border:1px solid var(--line);border-radius:4px;padding:4px 6px;background:var(--paper);font-family:var(--mono);font-size:.84rem}
+table.edit input.txt{font-family:var(--body);min-width:190px}
+table.edit td{padding:4px 6px;vertical-align:middle}
+.iconbtn{border:none;background:none;color:var(--muted);font-size:1rem;padding:2px 6px}
+.iconbtn:hover{color:var(--bad)}
+.rowbtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+tr.pass td:first-child{box-shadow:inset 3px 0 var(--good)} tr.fail td:first-child{box-shadow:inset 3px 0 var(--bad)}
+.listchips{display:flex;gap:4px}
+.lc{font-size:.68rem;font-weight:700;border-radius:4px;padding:1px 5px}
+.compare td,.compare th{white-space:nowrap}
+.compare td:first-child{white-space:normal;min-width:180px}
+#rulesDlg{max-width:560px}
+#rulesDlg .form{grid-template-columns:1fr 1fr}
+@media (max-width:600px){#rulesDlg .form{grid-template-columns:1fr}}
+.printonly{display:none}
+@media print{
+  :root{--paper:#fff;--card:#fff}
+  .topbar .head-actions,.addbar,.banner,aside.list,.tabs,#marginPanel input,.head-actions,.rowbtns,.iconbtn,#authPanel,dialog{display:none!important}
+  .shell{display:block;padding:0}
+  .tabpanel[hidden]{display:block!important}
+  .tabpanel{break-inside:auto;padding-top:10px}
+  .panel{border:none;padding:8px 0;break-inside:avoid-page}
+  .printonly{display:block}
+  body{font-size:11pt}
+  a{color:inherit;text-decoration:none}
+}
 .mp-good{color:var(--good)} .mp-warn{color:var(--warn)} .mp-bad{color:var(--bad)}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -197,6 +238,7 @@ input[type=range]{width:100%;accent-color:var(--accent);height:28px;margin:0}
   <div class="head-actions" id="appActions" hidden>
     <button class="btn addtoggle" id="btnAddToggle" type="button" aria-expanded="false" aria-controls="addForm">Add links</button>
     <button class="btn" id="btnAdd" type="button">Add a deal by hand</button>
+    <button class="btn" id="btnRules" type="button">Your rules</button>
     <div class="who"><span id="whoEmail"></span><button class="btn" id="btnPw" type="button">Change password</button><button class="btn" id="btnSignOut" type="button">Sign out</button></div>
   </div>
 </header>
@@ -236,13 +278,35 @@ input[type=range]{width:100%;accent-color:var(--accent);height:28px;margin:0}
   <aside class="list" aria-label="Deals">
     <div class="list-head">
       <h2>Deals</h2>
-      <span class="muted small" id="count"></span>
+      <span class="muted small"><span id="count"></span> · <button type="button" class="chip" id="btnCompare">Compare all</button></span>
     </div>
     <div class="filter" role="group" aria-label="Filter by status" id="filters"></div>
     <div class="list" id="dealList"></div>
   </aside>
   <section class="detail" id="detail" aria-live="polite"></section>
 </main>
+
+<dialog id="rulesDlg">
+  <form id="rulesForm">
+    <h3>Your rules</h3>
+    <p class="small muted">Every deal is checked against these. They're shared with everyone who uses the tracker.</p>
+    <fieldset><legend>If you sell</legend><div class="form">
+      <div class="field"><label for="ru-minMarginPct">Minimum profit on cost (%)</label><input id="ru-minMarginPct" data-rule="minMarginPct" type="number" step="any"></div>
+      <div class="field"><label for="ru-minProfitGbp">Minimum profit before tax (£)</label><input id="ru-minProfitGbp" data-rule="minProfitGbp" type="number" step="any"></div>
+      <div class="field"><label for="ru-minValueBufferPct">Value can fall this much before a loss (%)</label><input id="ru-minValueBufferPct" data-rule="minValueBufferPct" type="number" step="any"></div>
+      <div class="field"><label for="ru-flipTaxPct">Tax on flip profit (%)</label><input id="ru-flipTaxPct" data-rule="flipTaxPct" type="number" step="any"></div>
+    </div></fieldset>
+    <fieldset style="margin-top:10px"><legend>If you refinance and rent</legend><div class="form">
+      <div class="field"><label for="ru-maxCashLeftIn">Most cash left in after refinance (£)</label><input id="ru-maxCashLeftIn" data-rule="maxCashLeftIn" type="number" step="any"></div>
+      <div class="field"><label for="ru-minMonthlyCashflow">Minimum cash flow before tax (£/month)</label><input id="ru-minMonthlyCashflow" data-rule="minMonthlyCashflow" type="number" step="any"></div>
+      <div class="field"><label for="ru-stressRatePct">Lender's stress-test rate (%)</label><input id="ru-stressRatePct" data-rule="stressRatePct" type="number" step="any"></div>
+      <div class="field"><label for="ru-icrMinPct">Rent must cover interest by (%)</label><input id="ru-icrMinPct" data-rule="icrMinPct" type="number" step="any"></div>
+    </div></fieldset>
+    <p class="small muted">Lenders typically test rent at 125% of interest for limited companies and basic-rate taxpayers and 145% for higher-rate taxpayers, at about 5.5–8% on 2-year fixes (lower on 5-year fixes). Flip profit is usually taxed as income: about 42% for a higher-rate taxpayer, 25% in a limited company.</p>
+    <p class="err small" id="rulesErr" role="alert" style="color:var(--bad)"></p>
+    <div class="head-actions"><button class="btn primary" type="submit">Save rules</button><button class="btn" type="button" id="rulesCancel">Cancel</button></div>
+  </form>
+</dialog>
 
 <dialog id="confirmDlg">
   <h3>Delete this deal?</h3>
@@ -396,6 +460,7 @@ function renderList(){
       <span class="addr">${esc(d.address || "Untitled deal")}</span>
       <span class="row"><span>Price <span class="num">${gbp(r.price)}</span></span>${statusPill(d.status)}</span>
       <span class="row"><span>Sell profit <span class="num">${gbp(r.sell.profit)}</span></span><span>Left in <span class="num">${gbp(Math.max(0,r.hold.leftIn))}</span></span></span>
+      ${(() => { const a = analyse(d.inputs); return `<span class="row"><span class="listchips"><span class="lc ${a.sellPass ? "b-pass" : "b-fail"}">Sell ${a.sellPass ? "✓" : "✗"}</span><span class="lc ${a.holdPass ? "b-pass" : "b-fail"}">Rent ${a.holdPass ? "✓" : "✗"}</span></span><span class="num">${pct(r.sell.margin)}</span></span>`; })()}
     </button>`;
   }).join("");
 }
@@ -420,6 +485,202 @@ function tilesHtml(d, r){
     <div class="tile ${cfCls}"><div class="k">Cash flow if rented</div><div class="v">${gbp(r.hold.cashflow/12)}/m</div><div class="s">before tax · gross yield ${pct(r.hold.grossYield)}</div></div>
     <div class="tile"><div class="k">Max offer for ${esc(r.i.targetMarginPct)}% margin</div><div class="v">${gbp(mo)}</div><div class="s">sell route, same works and value</div></div>
   </div>`;
+}
+
+/* ---------- Your rules, stress tests and break-evens ---------- */
+const DEFAULT_RULES = { minMarginPct: 20, minProfitGbp: 25000, minValueBufferPct: 10, maxCashLeftIn: 30000, minMonthlyCashflow: 150, stressRatePct: 7, icrMinPct: 145, flipTaxPct: 40 };
+state.rules = Object.assign({}, DEFAULT_RULES);
+const R = () => state.rules;
+function bisect(f, lo, hi, n = 50){ // largest x in [lo,hi] with f(x) true, assuming f monotone true->false
+  if (!f(lo)) return null; if (f(hi)) return hi;
+  for (let k = 0; k < n; k++){ const m = (lo + hi) / 2; if (f(m)) lo = m; else hi = m; }
+  return lo;
+}
+function analyse(inputs){
+  const r = appraise(inputs), i = r.i, rules = R();
+  const n = k => Number(i[k]) || 0;
+  // lender stress test on the refinance
+  const stressInterest = r.hold.newLoan * (Number(rules.stressRatePct) || 0) / 100;
+  const icr = stressInterest ? r.hold.rent / stressInterest : NaN;
+  const maxLoanIcr = (rules.icrMinPct && rules.stressRatePct) ? r.hold.rent / (rules.icrMinPct / 100) / (rules.stressRatePct / 100) : NaN;
+  // tax and time
+  const flipTax = Math.max(0, r.sell.profit) * (Number(rules.flipTaxPct) || 0) / 100;
+  const afterTax = r.sell.profit - flipTax;
+  const m = r.sell.months || 1;
+  const roce = r.sell.cash > 0 ? r.sell.profit / r.sell.cash : NaN;
+  const annualised = isFinite(roce) && roce > -1 ? Math.pow(1 + roce, 12 / m) - 1 : NaN;
+  const marginPerYear = isFinite(r.sell.margin) ? r.sell.margin * 12 / m : NaN;
+  // break-evens on the sell route
+  const prof = ch => appraise(Object.assign({}, i, ch)).sell.profit;
+  const beValueRow = r.sell.profit > 0 ? (() => { let lo = 0, hi = n("gdv"); for (let k = 0; k < 50; k++){ const mid = (lo + hi) / 2; if (prof({ gdv: mid }) > 0) hi = mid; else lo = mid; } return hi; })() : null;
+  const beWorks = r.sell.profit > 0 ? bisect(w => prof({ worksCost: w }) > 0, n("worksCost"), n("worksCost") + n("gdv")) : null;
+  let beMonths = null;
+  if (r.sell.profit > 0){ for (let k = 1; k <= 60; k++){ if (prof({ monthsWorks: n("monthsWorks") + k }) <= 0){ beMonths = k; break; } } if (beMonths === null) beMonths = Infinity; }
+  const valueBuffer = beValueRow != null && n("gdv") ? (n("gdv") - beValueRow) / n("gdv") : (r.sell.profit > 0 ? 1 : 0);
+  // rules
+  const sellChecks = [
+    { label: `Profit on cost at least ${rules.minMarginPct}%`, value: pct(r.sell.margin), pass: r.sell.margin * 100 >= rules.minMarginPct },
+    { label: `Profit at least ${gbp(rules.minProfitGbp)}`, value: gbp(r.sell.profit), pass: r.sell.profit >= rules.minProfitGbp },
+    { label: `Value can fall ${rules.minValueBufferPct}% before a loss`, value: r.sell.profit > 0 ? pct(valueBuffer) : "already a loss", pass: valueBuffer * 100 >= rules.minValueBufferPct },
+  ];
+  const holdChecks = [
+    { label: `Cash left in no more than ${gbp(rules.maxCashLeftIn)}`, value: gbp(r.hold.leftIn), pass: r.hold.leftIn <= rules.maxCashLeftIn },
+    { label: `Cash flow at least ${gbp(rules.minMonthlyCashflow)}/month`, value: gbp(r.hold.cashflow / 12) + "/m", pass: r.hold.cashflow / 12 >= rules.minMonthlyCashflow },
+    { label: `Lender test: rent covers interest ${rules.icrMinPct}% at ${rules.stressRatePct}%`, value: isFinite(icr) ? pct(icr, 0) : "–", pass: isFinite(icr) && icr * 100 >= rules.icrMinPct },
+  ];
+  return { r, icr, maxLoanIcr, flipTax, afterTax, annualised, marginPerYear, roce, beValue: beValueRow, beWorks, beMonths, valueBuffer,
+    sellChecks, holdChecks, sellPass: sellChecks.every(c => c.pass), holdPass: holdChecks.every(c => c.pass) };
+}
+const tick = p => p ? `<span class="ok" aria-label="pass">✓</span>` : `<span class="no" aria-label="fail">✗</span>`;
+function checkPanelHtml(d){
+  if (d.example) return "";
+  const a = analyse(d.inputs), r = a.r, i = r.i;
+  const badge = (p, l) => `<span class="badge ${p ? "b-pass" : "b-fail"}">${p ? "Passes" : "Fails"} · ${l}</span>`;
+  const list = cs => `<ul>${cs.map(c => `<li>${tick(c.pass)}<span>${esc(c.label)}</span><span class="val">${esc(c.value)}</span></li>`).join("")}</ul>`;
+  const loanShort = isFinite(a.maxLoanIcr) && a.maxLoanIcr < r.hold.newLoan ? `<p class="small" style="margin:6px 0 0">At the stress-test rate a lender would lend about <b class="num">${gbp(Math.floor(a.maxLoanIcr/1000)*1000)}</b>, not ${gbp(r.hold.newLoan)}, which leaves about <b class="num">${gbp(r.hold.newLoan - a.maxLoanIcr)}</b> more in the deal.</p>` : "";
+  const be = r.sell.profit > 0 ? `<div class="be">
+      <div>Loses money if the sale price is below<b>${gbp(a.beValue)}</b><span class="muted">${pct((Number(i.gdv) - a.beValue) / Number(i.gdv))} under the value you've set</span></div>
+      <div>Loses money if works cost more than<b>${gbp(a.beWorks)}</b><span class="muted">${pct((a.beWorks - Number(i.worksCost)) / Math.max(1, Number(i.worksCost)))} over budget, before contingency</span></div>
+      <div>Loses money if it runs late by<b>${a.beMonths === Infinity ? "over 5 years" : a.beMonths + " month" + (a.beMonths > 1 ? "s" : "")}</b><span class="muted">extra bridging and holding costs</span></div>
+      <div>Return per year on your cash<b>${pct(a.annualised)}</b><span class="muted">${pct(a.marginPerYear)} profit on cost per year · after ${R().flipTaxPct}% tax: ${gbp(a.afterTax)}</span></div>
+    </div>` : `<div class="be"><div>The sell route makes a loss of<b>${gbp(r.sell.profit)}</b><span class="muted">at this price, value and budget</span></div><div>Return per year on your cash<b>${pct(a.annualised)}</b><span class="muted">sell route</span></div></div>`;
+  return `<div class="panel" id="checkPanel">
+    <div class="head" style="margin-bottom:10px"><h2>Does it meet your rules?</h2><button class="btn" type="button" data-open-rules>Change rules</button></div>
+    <div class="chk">
+      <div class="stack">${badge(a.sellPass, "sell")}${list(a.sellChecks)}</div>
+      <div class="stack">${badge(a.holdPass, "refinance and rent")}${list(a.holdChecks)}${loanShort}</div>
+    </div>
+    ${be}
+  </div>`;
+}
+
+/* ---------- Risk checks ---------- */
+const RISK_ORDER = ["red", "amber", "unknown", "green"];
+const RISK_LABEL = { red: "Problem", amber: "Check", green: "Clear", unknown: "Not checked" };
+const STANDARD_RISKS = ["Flood risk", "Conservation area", "Listed building", "Article 4 direction", "Tenure and lease", "EPC and lettings rules", "Planning history", "Ground, structure and drainage", "Crime and noise", "HMO licensing"];
+function risksHtml(d){
+  const got = (d.riskChecks || []).slice();
+  const names = new Set(got.map(c => c.check));
+  STANDARD_RISKS.forEach(n => { if (!names.has(n)) got.push({ check: n, status: "unknown", detail: "" }); });
+  got.sort((a, b) => RISK_ORDER.indexOf(a.status || "unknown") - RISK_ORDER.indexOf(b.status || "unknown"));
+  const mk = d.market || {};
+  const hist = (mk.priceHistory || []).map(h => `<li><span class="num">${esc(h.date || "")}</span> ${esc(h.event || "")} ${h.price ? `<b class="num">${gbp(h.price)}</b>` : ""}</li>`).join("");
+  return `<div class="grid2">
+    <div class="stack"><h2>Risk checks</h2>
+      <div>${got.map(c => `<div class="risk"><span class="rdot r-${esc(c.status || "unknown")}">${RISK_LABEL[c.status] || "Not checked"}</span>
+        <div><b>${esc(c.check)}</b>${c.detail ? `<div class="small">${esc(c.detail)}</div>` : ""}${safeUrl(c.url) ? `<a class="small" href="${esc(c.url)}" target="_blank" rel="noopener">Source</a>` : ""}</div></div>`).join("")}</div>
+      <p class="small muted">"Not checked" items are filled in by the next appraisal. Ask Claude to re-appraise a deal to refresh them.</p>
+    </div>
+    <div class="stack"><h2>Market signals</h2>
+      <dl class="kv small">
+        <dt>Days on the market</dt><dd>${mk.daysOnMarket != null ? esc(mk.daysOnMarket) : "Not checked"}</dd>
+        <dt>Price changes</dt><dd>${mk.priceChanges != null ? esc(mk.priceChanges) : "Not checked"}</dd>
+        <dt>Previously sold</dt><dd>${mk.lastSold ? esc(mk.lastSold) : "Not checked"}</dd>
+        <dt>Rent range</dt><dd>${mk.rentLow && mk.rentHigh ? `<span class="num">${gbp(mk.rentLow)}–${gbp(mk.rentHigh)}</span> a month${mk.rentNote ? " · " + esc(mk.rentNote) : ""}` : "Not checked"}</dd>
+        <dt>Seller motivation</dt><dd>${mk.motivation ? esc(mk.motivation) : "Not checked"}</dd>
+      </dl>
+      ${hist ? `<h3>Listing history</h3><ul class="clean small">${hist}</ul>` : ""}
+    </div>
+  </div>`;
+}
+
+/* ---------- Refurb estimator ---------- */
+// 2026 UK trade rates (outside London); London about 35% more.
+const REFURB_TEMPLATE = [
+  ["Kitchen, supply and fit", "each", 6500, 12000, d => 1],
+  ["Bathroom, supply and fit", "each", 4500, 7500, d => Math.max(1, Number(d.facts && d.facts.baths) || 1)],
+  ["Rewire", "m²", 0, 45, d => sqmOf(d)],
+  ["Boiler and heating", "item", 3000, 7000, d => 1],
+  ["Plastering and making good", "m²", 15, 40, d => sqmOf(d)],
+  ["Flooring", "m²", 30, 45, d => sqmOf(d)],
+  ["Decoration", "m²", 18, 28, d => sqmOf(d)],
+  ["Windows and external doors", "item", 0, 6500, d => 1],
+  ["Insulation and EPC upgrade", "item", 1500, 4000, d => 1],
+  ["Skips, cleaning and site costs", "item", 1200, 3000, d => 1],
+];
+const sqmOf = d => Math.round(Number(d.facts && (d.facts.sqmAfter || d.facts.sqm)) || 80);
+const isLondon = d => /london|\bN\d|\bE\d|\bSE\d|\bSW\d|\bW\d|\bNW\d|\bEC\d|\bWC\d/i.test(String(d.address || "") + " " + String(d.council || ""));
+function templateItems(d, spec){
+  const f = isLondon(d) ? 1.35 : 1;
+  return REFURB_TEMPLATE.map(([item, unit, light, full, q]) => ({ item, unit, qty: q(d), rate: Math.round((spec === "full" ? full : light) * f) })).filter(x => x.rate > 0);
+}
+const itemsTotal = items => (items || []).reduce((s, x) => s + (Number(x.qty) || 0) * (Number(x.rate) || 0), 0);
+function refurbHtml(d){
+  const items = d.worksItems || [];
+  const dis = (state.readOnly || d.example) ? "disabled" : "";
+  const total = itemsTotal(items);
+  const wc = Number((d.inputs || {}).worksCost) || 0;
+  const rows = items.map((x, k) => `<tr>
+      <td><input class="txt" data-wi="${k}" data-f="item" value="${esc(x.item)}" ${dis} aria-label="Item"></td>
+      <td><input data-wi="${k}" data-f="qty" type="number" step="any" value="${esc(x.qty)}" ${dis} aria-label="Quantity" style="max-width:80px"></td>
+      <td><input class="txt" data-wi="${k}" data-f="unit" value="${esc(x.unit || "")}" ${dis} aria-label="Unit" style="min-width:50px;max-width:70px"></td>
+      <td><input data-wi="${k}" data-f="rate" type="number" step="any" value="${esc(x.rate)}" ${dis} aria-label="Rate (£)"></td>
+      <td class="r num" data-wtot="${k}">${gbp((Number(x.qty)||0)*(Number(x.rate)||0))}</td>
+      <td><button class="iconbtn" type="button" data-widel="${k}" ${dis} aria-label="Remove ${esc(x.item)}">✕</button></td></tr>`).join("");
+  return `<div class="panel"><div class="head"><h3>Refurb estimate, room by room</h3><span class="save-state" id="wiState"></span></div>
+    ${items.length ? `<div class="tablewrap"><table class="edit"><thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Rate (£)</th><th class="r">Cost</th><th></th></tr></thead>
+      <tbody>${rows}<tr class="subject"><td colspan="4"><b>Total before contingency</b> <span class="muted small">(build cost in the assumptions: ${gbp(wc)})</span></td><td class="r num" id="wiTotal"><b>${gbp(total)}</b></td><td></td></tr></tbody></table></div>`
+      : `<p class="small muted">No line-by-line estimate yet. Start from a template, then change the quantities and rates to match the quotes you get.</p>`}
+    <div class="rowbtns">
+      <button class="btn" type="button" data-witpl="light" ${dis}>Template: light refurb</button>
+      <button class="btn" type="button" data-witpl="full" ${dis}>Template: full refurb</button>
+      <button class="btn" type="button" data-wiadd ${dis}>Add a line</button>
+      ${items.length ? `<button class="btn primary" type="button" data-wiuse ${dis}>Use ${gbp(total)} as the build cost</button>` : ""}
+    </div>
+    <p class="small muted">Rates are 2026 UK trade benchmarks${isLondon(d) ? ", with a 35% London uplift" : ""}. Extensions, conversions and structural work aren't in the templates, so add them as their own lines.</p>
+  </div>`;
+}
+
+/* ---------- Exit options (scenarios) ---------- */
+const SC_FIELDS = [["purchasePrice","Price"],["worksCost","Works"],["gdv","Value after"],["monthlyRent","Rent/m"],["monthsWorks","Months"]];
+function scenarioList(d){
+  const base = { name: "Base plan", note: "The assumptions in Costs and returns", overrides: {}, base: true };
+  const cash = { name: "Base plan, bought with cash", note: "No bridging loan", overrides: { financeType: "cash" }, auto: true };
+  return [base, ...(d.scenarios || []), ...((d.inputs || {}).financeType === "bridge" ? [cash] : [])];
+}
+function scOutHtml(a){
+  const r = a.r;
+  return `<td class="r num" data-o="1">${gbp(r.sell.profit)}<div class="small muted">${pct(r.sell.margin)} · ${pct(a.annualised)}/yr</div></td>
+      <td class="r num" data-o="2">${gbp(r.hold.leftIn)}<div class="small muted">${gbp(r.hold.cashflow/12)}/m</div></td>
+      <td data-o="3">${a.sellPass ? `<span class="badge b-pass">Sell ✓</span>` : ""} ${a.holdPass ? `<span class="badge b-pass">Rent ✓</span>` : ""} ${!a.sellPass && !a.holdPass ? `<span class="badge b-fail">Fails</span>` : ""}</td>`;
+}
+function exitsHtml(d){
+  const dis = (state.readOnly || d.example) ? "disabled" : "";
+  const list = scenarioList(d);
+  const rows = list.map((s, k) => {
+    const inp = Object.assign({}, d.inputs || {}, s.overrides || {});
+    const a = analyse(inp), r = a.r;
+    const idx = k - 1; // index into d.scenarios for editable rows
+    const editable = !s.base && !s.auto;
+    const cell = (key) => editable
+      ? `<input data-sc="${idx}" data-k="${key}" type="number" step="any" value="${esc(inp[key])}" ${dis} aria-label="${esc(s.name)}: ${key}">`
+      : `<span class="num">${key === "monthsWorks" ? esc(inp[key]) : gbp(Number(inp[key]))}</span>`;
+    return `<tr class="${a.sellPass || a.holdPass ? "pass" : "fail"}" data-scrow="${idx}">
+      <td>${editable ? `<input class="txt" data-sc="${idx}" data-k="name" value="${esc(s.name)}" ${dis} aria-label="Option name">` : `<b>${esc(s.name)}</b>`}${s.note ? `<div class="small muted">${esc(s.note)}</div>` : ""}</td>
+      ${SC_FIELDS.map(([key]) => `<td>${cell(key)}</td>`).join("")}
+      ${scOutHtml(a)}
+      <td>${editable ? `<button class="iconbtn" type="button" data-scdel="${idx}" ${dis} aria-label="Remove ${esc(s.name)}">✕</button>` : ""}</td>
+    </tr>`;
+  }).join("");
+  return `<div class="stack">
+    <p class="small muted" style="margin:0">Compare ways of doing this deal side by side. Each option starts from the base assumptions and changes only what you edit here. Green edge means it passes your rules on at least one route.</p>
+    <div class="tablewrap"><table class="edit"><thead><tr><th>Option</th>${SC_FIELDS.map(([,l]) => `<th>${l}</th>`).join("")}<th class="r">If sold</th><th class="r">If rented: left in</th><th>Your rules</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="rowbtns"><button class="btn" type="button" data-scadd ${dis}>Add an option</button><span class="save-state" id="scState"></span></div>
+  </div>`;
+}
+
+/* ---------- Compare all deals ---------- */
+function compareHtml(){
+  const deals = state.deals.filter(d => d.inputs);
+  if (!deals.length) return `<div class="panel empty">No appraised deals to compare yet.</div>`;
+  const rows = deals.map(d => { const a = analyse(d.inputs), r = a.r;
+    return `<tr><td><button type="button" class="chip" data-id="${esc(d.id)}">${esc(d.address || d.id)}</button><div class="small muted">${esc(d.status || "Screening")}</div></td>
+      <td class="r num">${gbp(r.price)}</td><td class="r num">${gbp(maxOffer(d.inputs))}</td><td class="r num">${gbp(r.i.gdv)}</td>
+      <td class="r num">${gbp(r.sell.profit)}</td><td class="r num">${pct(r.sell.margin)}</td><td class="r num">${pct(a.annualised)}</td>
+      <td class="r num">${gbp(r.hold.leftIn)}</td><td class="r num">${gbp(r.hold.cashflow/12)}</td>
+      <td>${a.sellPass ? `<span class="badge b-pass">Sell ✓</span>` : `<span class="badge b-fail">Sell ✗</span>`} ${a.holdPass ? `<span class="badge b-pass">Rent ✓</span>` : `<span class="badge b-fail">Rent ✗</span>`}</td></tr>`; }).join("");
+  return `<div class="panel"><div class="head"><h2>All deals side by side</h2><button class="btn" type="button" id="btnCloseCompare">Back to the deal</button></div>
+    <div class="tablewrap" style="margin-top:12px"><table class="compare"><thead><tr><th>Deal</th><th class="r">Price</th><th class="r">Max offer</th><th class="r">Value after</th><th class="r">Profit if sold</th><th class="r">On cost</th><th class="r">Per year</th><th class="r">Left in</th><th class="r">Cash flow/m</th><th>Your rules</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 
 /* ---------- Profit-margin sliders ---------- */
@@ -587,7 +848,7 @@ function numbersHtml(d){
   return `<div class="grid2">
     <div class="stack"><div class="head"><h2>Assumptions</h2><span class="save-state" id="saveState"></span></div>${form}
       <p class="small muted">Stamp Duty uses England and Northern Ireland bands. Shops and other commercial buildings use the commercial rates, even if you plan to convert them to homes. Tax credit and rates are editable assumptions, so check them with your accountant. Personal rental profit tax rises from April 2027, and a sale soon after works may be taxed as trading income rather than capital gains.</p></div>
-    <div class="calc-out" id="calcOut"></div>
+    <div class="calc-out"><div id="refurbBox">${refurbHtml(d)}</div><div class="calc-out" id="calcOut"></div></div>
   </div>`;
 }
 
@@ -655,7 +916,8 @@ function renderDetail(){
   const facts = [f.type, f.beds!=null?`${f.beds} bed`:"", f.baths!=null?`${f.baths} bath`:"", f.sqm?`${f.sqm} m²`:"", f.tenure, f.epc?`EPC ${f.epc}`:"", d.council].filter(Boolean).map(x=>`<span>${esc(x)}</span>`).join("");
   const v = d.verdict || {};
   const dis = (state.readOnly || d.example) ? "disabled" : "";
-  const tabs = [["overview","Value-add and layout"],["comps","Sold comparables"],["planning","Planning"],["numbers","Costs and returns"],["notes","Notes and sources"]];
+  const tabs = [["overview","Value-add and layout"],["exits","Exit options"],["risks","Risks and market"],["comps","Sold comparables"],["planning","Planning"],["numbers","Costs and returns"],["notes","Notes and sources"]];
+  if (state.compare){ $("#detail").innerHTML = compareHtml(); return; }
   $("#detail").innerHTML = `
     <div class="panel">
       <div class="head">
@@ -664,6 +926,7 @@ function renderDetail(){
         <div class="head-actions">
           <label class="small muted" for="statusSel">Status</label>
           <select id="statusSel" class="btn" ${dis}>${STATUSES.map(s=>`<option ${s===(d.status||"Screening")?"selected":""}>${s}</option>`).join("")}</select>
+          ${d.example?"":`<button class="btn" type="button" id="btnPrint">Print or save PDF</button>`}
           ${d.example?"":`<button class="btn" id="btnReappraise" type="button" ${dis} title="Refresh comparables, planning and costs">${isQueued(d)?"Re-appraisal requested":"Re-appraise"}</button><button class="btn danger" id="btnDelete" type="button" ${dis}>Delete</button>`}
         </div>
       </div>
@@ -671,9 +934,12 @@ function renderDetail(){
     </div>
     ${tilesHtml(d, r)}
     ${marginPanelHtml(d, r)}
+    ${checkPanelHtml(d)}
     <div class="panel">
       <div class="tabs" role="tablist">${tabs.map(([k,l])=>`<button class="tab" role="tab" id="tab-${k}" aria-controls="pane-${k}" aria-selected="${state.tab===k}" data-tab="${k}" type="button">${l}</button>`).join("")}</div>
       <div class="tabpanel" role="tabpanel" id="pane-overview" aria-labelledby="tab-overview" ${state.tab!=="overview"?"hidden":""}>${overviewHtml(d)}</div>
+      <div class="tabpanel" role="tabpanel" id="pane-exits" aria-labelledby="tab-exits" ${state.tab!=="exits"?"hidden":""}><h2 class="printonly">Exit options</h2>${exitsHtml(d)}</div>
+      <div class="tabpanel" role="tabpanel" id="pane-risks" aria-labelledby="tab-risks" ${state.tab!=="risks"?"hidden":""}><h2 class="printonly">Risks and market</h2>${risksHtml(d)}</div>
       <div class="tabpanel" role="tabpanel" id="pane-comps" aria-labelledby="tab-comps" ${state.tab!=="comps"?"hidden":""}>${compsHtml(d)}</div>
       <div class="tabpanel" role="tabpanel" id="pane-planning" aria-labelledby="tab-planning" ${state.tab!=="planning"?"hidden":""}>${planningHtml(d)}</div>
       <div class="tabpanel" role="tabpanel" id="pane-numbers" aria-labelledby="tab-numbers" ${state.tab!=="numbers"?"hidden":""}>${numbersHtml(d)}</div>
@@ -683,6 +949,67 @@ function renderDetail(){
 }
 
 function renderAll(){ renderFilters(); renderList(); renderDetail(); }
+
+/* ---------- Decision tools: events ---------- */
+let wiTimer = null, scTimer = null;
+function saveItems(d){ clearTimeout(wiTimer); const id = d.id, worksItems = d.worksItems; wiTimer = setTimeout(() => saveFields(id, { worksItems }, $("#wiState")), 700); }
+function saveScenarios(d){ clearTimeout(scTimer); const id = d.id, scenarios = d.scenarios; scTimer = setTimeout(() => saveFields(id, { scenarios }, $("#scState")), 700); }
+function rerenderKeepTab(){ renderList(); renderDetail(); }
+document.addEventListener("input", e => {
+  const el = e.target, d = currentDeal(); if (!d || d.example) return;
+  if (el.dataset.wi != null){
+    const k = Number(el.dataset.wi), f = el.dataset.f;
+    d.worksItems = (d.worksItems || []).slice(); d.worksItems[k] = Object.assign({}, d.worksItems[k], { [f]: (f === "qty" || f === "rate") ? Number(el.value) || 0 : el.value });
+    const x = d.worksItems[k]; const c = document.querySelector(`[data-wtot="${k}"]`); if (c) c.textContent = gbp((Number(x.qty)||0)*(Number(x.rate)||0));
+    const t = $("#wiTotal"); if (t) t.innerHTML = `<b>${gbp(itemsTotal(d.worksItems))}</b>`;
+    const u = document.querySelector("[data-wiuse]"); if (u) u.textContent = `Use ${gbp(itemsTotal(d.worksItems))} as the build cost`;
+    saveItems(d);
+  } else if (el.dataset.sc != null){
+    const k = Number(el.dataset.sc), key = el.dataset.k;
+    d.scenarios = (d.scenarios || []).slice();
+    const s = Object.assign({ overrides: {} }, d.scenarios[k]);
+    if (key === "name") s.name = el.value; else s.overrides = Object.assign({}, s.overrides, { [key]: Number(el.value) || 0 });
+    d.scenarios[k] = s;
+    const row = document.querySelector(`[data-scrow="${k}"]`);
+    if (row){ const a = analyse(Object.assign({}, d.inputs || {}, s.overrides || {}));
+      row.querySelectorAll("[data-o]").forEach(c => c.remove());
+      const del = row.lastElementChild; del.insertAdjacentHTML("beforebegin", scOutHtml(a));
+      row.className = a.sellPass || a.holdPass ? "pass" : "fail"; }
+    saveScenarios(d);
+  }
+});
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-witpl],[data-wiadd],[data-widel],[data-wiuse],[data-scadd],[data-scdel],[data-open-rules],#btnRules,#rulesCancel,#btnPrint,#btnCompare,#btnCloseCompare");
+  if (!t) return;
+  const d = currentDeal();
+  if (t.id === "btnRules" || t.dataset.openRules != null){ openRules(); return; }
+  if (t.id === "rulesCancel"){ $("#rulesDlg").close(); return; }
+  if (t.id === "btnPrint"){ window.print(); return; }
+  if (t.id === "btnCompare"){ state.compare = true; renderDetail(); return; }
+  if (t.id === "btnCloseCompare"){ state.compare = false; renderDetail(); return; }
+  if (!d || d.example || state.readOnly) return;
+  if (t.dataset.witpl){ if ((d.worksItems || []).length && !confirmReplace()) return; d.worksItems = templateItems(d, t.dataset.witpl); saveItems(d); $("#refurbBox").innerHTML = refurbHtml(d); return; }
+  if (t.dataset.wiadd != null){ d.worksItems = (d.worksItems || []).concat([{ item: "New item", unit: "item", qty: 1, rate: 0 }]); saveItems(d); $("#refurbBox").innerHTML = refurbHtml(d); return; }
+  if (t.dataset.widel != null){ d.worksItems = (d.worksItems || []).filter((_, k) => k !== Number(t.dataset.widel)); saveItems(d); $("#refurbBox").innerHTML = refurbHtml(d); return; }
+  if (t.dataset.wiuse != null){ d.inputs = Object.assign({}, DEFAULT_INPUTS, d.inputs || {}, { worksCost: Math.round(itemsTotal(d.worksItems)) }); saveFields(d.id, { inputs: d.inputs }); rerenderKeepTab(); return; }
+  if (t.dataset.scadd != null){ const i = d.inputs || {}; d.scenarios = (d.scenarios || []).concat([{ name: "New option", note: "", overrides: { purchasePrice: i.purchasePrice, worksCost: i.worksCost, gdv: i.gdv, monthlyRent: i.monthlyRent, monthsWorks: i.monthsWorks } }]); saveScenarios(d); $("#pane-exits").innerHTML = exitsHtml(d); return; }
+  if (t.dataset.scdel != null){ d.scenarios = (d.scenarios || []).filter((_, k) => k !== Number(t.dataset.scdel)); saveScenarios(d); $("#pane-exits").innerHTML = exitsHtml(d); return; }
+});
+let replaceArmed = 0;
+function confirmReplace(){ const now = Date.now(); if (now - replaceArmed < 4000) return true; replaceArmed = now; showBanner("This replaces your current refurb lines. Click the template again within a few seconds to confirm."); return false; }
+function openRules(){
+  document.querySelectorAll("[data-rule]").forEach(i => { i.value = R()[i.dataset.rule]; i.disabled = state.readOnly; });
+  $("#rulesErr").textContent = "";
+  try{ $("#rulesDlg").showModal(); }catch(_){ $("#rulesDlg").setAttribute("open",""); }
+}
+document.getElementById("rulesForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const next = Object.assign({}, R());
+  document.querySelectorAll("[data-rule]").forEach(i => { next[i.dataset.rule] = Number(i.value) || 0; });
+  if (!state.db || state.readOnly){ $("#rulesErr").textContent = "You can't change the rules from this account."; return; }
+  try{ await saveRules(next); state.rules = next; $("#rulesDlg").close(); renderAll(); }
+  catch(_){ $("#rulesErr").textContent = "Couldn't save the rules just now. Try again."; }
+});
 
 /* ---------- Saving ---------- */
 let inputTimer = null, notesTimer = null, writing = Promise.resolve();
@@ -706,7 +1033,7 @@ document.addEventListener("click", e => {
   const t = e.target.closest("[data-filter],[data-id],[data-tab],#btnDelete,#btnAdd,#btnReappraise,#confirmYes,#confirmNo");
   if (!t) return;
   if (t.dataset.filter){ state.filter = t.dataset.filter; renderList(); renderFilters(); return; }
-  if (t.dataset.id){ state.currentId = t.dataset.id; renderList(); renderDetail(); return; }
+  if (t.dataset.id){ state.currentId = t.dataset.id; state.compare = false; renderList(); renderDetail(); return; }
   if (t.dataset.tab){ state.tab = t.dataset.tab; renderDetail(); return; }
   if (t.id === "btnDelete"){ const dlg = $("#confirmDlg"); try{ dlg.showModal(); }catch(_){ dlg.setAttribute("open",""); } return; }
   if (t.id === "confirmNo"){ $("#confirmDlg").close(); return; }
@@ -773,6 +1100,7 @@ document.addEventListener("input", e => {
     $("#calcOut").innerHTML = ledgerHtml(r);
     const tiles = document.querySelector(".tiles"); if (tiles) tiles.outerHTML = tilesHtml(d, r);
     refreshMarginPanel(d, r);
+    const cp = document.getElementById("checkPanel"); if (cp) cp.outerHTML = checkPanelHtml(d);
     renderList();
     clearTimeout(inputTimer);
     const id = d.id, inputs = d.inputs;
@@ -817,6 +1145,10 @@ const shimDb = {
   }
 };
 
+async function saveRules(rules){
+  const { error } = await SB.from("settings").upsert({ id: "rules", data: rules });
+  if (error) throw error;
+}
 async function refresh(){
   if (refreshing){ refreshQueued = true; return; }
   refreshing = true;
@@ -824,12 +1156,14 @@ async function refresh(){
     const { data, error } = await SB.from("deals").select("id,data,updated_at").order("updated_at", { ascending: false });
     if (error) throw error;
     if (loadFailed){ loadFailed = false; showBanner(""); }
-    const editing = document.activeElement && ((document.activeElement.dataset && document.activeElement.dataset.key) || ["dealNotes","offerRange","marginRange"].includes(document.activeElement.id));
+    const ae = document.activeElement;
+    const editing = ae && ae.closest && ae.closest("#detail") && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);
+    try{ const s = await SB.from("settings").select("data").eq("id", "rules").maybeSingle(); if (s.data && s.data.data) state.rules = Object.assign({}, DEFAULT_RULES, s.data.data); }catch(_){}
     const fresh = data.map(r => Object.assign({ id: r.id, _updatedAt: r.updated_at }, r.data || {}));
     if (editing){
       // keep the deal being edited as the user has it; refresh everything else
       const cur = state.deals.find(x => x.id === state.currentId);
-      state.deals = fresh.map(x => (cur && x.id === cur.id) ? Object.assign(x, { inputs: cur.inputs, notes: cur.notes }) : x);
+      state.deals = fresh.map(x => (cur && x.id === cur.id) ? cur : x);
       renderList();
     } else {
       state.deals = fresh;
@@ -861,6 +1195,7 @@ function showApp(session){
   if (!channel){
     channel = SB.channel("deals-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "deals" }, () => refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "settings" }, () => refresh())
       .subscribe();
   }
   SB.rpc("is_allowed").then(({ data }) => {
