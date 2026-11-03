@@ -172,6 +172,19 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
   .list .deal-item{padding:8px 10px}
 }
 [hidden]{display:none!important}
+.mp{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media (max-width:900px){.mp{grid-template-columns:1fr}}
+.mp-box{display:grid;gap:8px;align-content:start}
+.mp-box h3{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.mp-big{font-family:var(--mono);font-size:1.45rem;font-weight:500}
+.mp-sub{font-size:.85rem;color:var(--muted)}
+input[type=range]{width:100%;accent-color:var(--accent);height:28px;margin:0}
+.mp-scale{display:flex;justify-content:space-between;font-size:.75rem;color:var(--muted);font-family:var(--mono)}
+.ladder{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:4px}
+.ladder button{border:1px solid var(--line);background:var(--paper);border-radius:6px;padding:6px 4px;text-align:center;font-size:.78rem;color:var(--muted);display:grid;gap:2px}
+.ladder button b{font-family:var(--mono);font-weight:500;color:var(--ink);font-size:.82rem}
+.ladder button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.mp-good{color:var(--good)} .mp-warn{color:var(--warn)} .mp-bad{color:var(--bad)}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -409,6 +422,93 @@ function tilesHtml(d, r){
   </div>`;
 }
 
+/* ---------- Profit-margin sliders ---------- */
+const LADDER = [10, 15, 20, 25, 30];
+const marginCls = m => m >= 0.2 ? "mp-good" : m >= 0.1 ? "mp-warn" : "mp-bad";
+function offerOutHtml(d, price){
+  const x = appraise(Object.assign({}, d.inputs || {}, { purchasePrice: price }));
+  const asking = Number(d.facts && d.facts.asking) || 0;
+  const vs = asking ? " · " + (Math.abs(price - asking) < asking * 0.005 ? "at asking" : price < asking ? pct((asking - price) / asking, 0) + " below asking" : pct((price - asking) / asking, 0) + " above asking") : "";
+  return `<div class="mp-big ${marginCls(x.sell.margin)}">${pct(x.sell.margin)} <span class="mp-sub">profit on cost</span></div>
+    <div class="mp-sub">Profit if sold <b class="num">${gbp(x.sell.profit)}</b> · cash left in if rented <b class="num">${gbp(x.hold.leftIn)}</b>${vs}</div>`;
+}
+function targetOutHtml(d, target){
+  const mo = maxOffer(Object.assign({}, d.inputs || {}, { targetMarginPct: target }));
+  const asking = Number(d.facts && d.facts.asking) || 0;
+  const vs = asking ? (mo <= asking ? `${pct((asking - mo) / asking, 0)} below asking` : `${pct((mo - asking) / asking, 0)} above asking`) : "";
+  return `<div class="mp-big">${mo > 0 ? gbp(mo) : "Not reachable"}</div><div class="mp-sub">${mo > 0 ? `Max offer for ${target}% profit on cost${vs ? " · " + vs : ""}` : `Even a very low price doesn't reach ${target}% with these works and this value.`}</div>`;
+}
+function ladderHtml(d, target){
+  return LADDER.map(t => { const mo = maxOffer(Object.assign({}, d.inputs || {}, { targetMarginPct: t }));
+    return `<button type="button" data-ladder="${t}" aria-pressed="${Number(target) === t}"><span>${t}%</span><b>${mo > 0 ? gbp(Math.round(mo / 1000) * 1000).replace(/,000$/, "k") : "–"}</b></button>`; }).join("");
+}
+function marginPanelHtml(d, r){
+  if (d.example) return "";
+  const asking = Number(d.facts && d.facts.asking) || r.price || 0;
+  const lo = Math.max(0, Math.floor(asking * 0.5 / 5000) * 5000), hi = Math.ceil(asking * 1.1 / 5000) * 5000;
+  const target = Number(r.i.targetMarginPct) || 20;
+  const dis = state.readOnly ? "disabled" : "";
+  const offer = (state.offer && state.offer.id === d.id) ? state.offer.price : r.price;
+  return `<div class="panel" id="marginPanel"><div class="mp">
+    <div class="mp-box">
+      <h3><label for="offerRange">If I offer…</label><span class="num" id="offerVal">${gbp(offer)}</span></h3>
+      <input type="range" id="offerRange" min="${lo}" max="${hi}" step="1000" value="${Math.min(hi, Math.max(lo, offer))}" aria-describedby="offerOut">
+      <div class="mp-scale"><span>${gbp(lo)}</span><span>${gbp(hi)}</span></div>
+      <div id="offerOut" aria-live="polite">${offerOutHtml(d, offer)}</div>
+      <div><button class="btn" type="button" id="useOffer" ${dis} ${offer === r.price || state.readOnly ? "hidden" : ""}>Use this as the purchase price</button></div>
+    </div>
+    <div class="mp-box">
+      <h3><label for="marginRange">Profit I want</label><span class="num" id="marginVal">${target}%</span></h3>
+      <input type="range" id="marginRange" min="0" max="40" step="1" value="${target}" aria-describedby="targetOut">
+      <div class="mp-scale"><span>0%</span><span>20%</span><span>40%</span></div>
+      <div id="targetOut" aria-live="polite">${targetOutHtml(d, target)}</div>
+      <div class="ladder" role="group" aria-label="Max offer at each profit level">${ladderHtml(d, target)}</div>
+    </div>
+  </div></div>`;
+}
+function refreshMarginPanel(d, r){
+  const p = document.getElementById("marginPanel"); if (!p) return;
+  if (document.activeElement && (document.activeElement.id === "offerRange" || document.activeElement.id === "marginRange")) return;
+  p.outerHTML = marginPanelHtml(d, r);
+}
+let marginTimer = null;
+document.addEventListener("input", e => {
+  const d = currentDeal(); if (!d) return;
+  if (e.target.id === "offerRange"){
+    const price = Number(e.target.value);
+    state.offer = { id: d.id, price };
+    $("#offerVal").textContent = gbp(price);
+    $("#offerOut").innerHTML = offerOutHtml(d, price);
+    const r = appraise(d.inputs); $("#useOffer").hidden = price === r.price || state.readOnly;
+  } else if (e.target.id === "marginRange"){
+    setTarget(d, Number(e.target.value));
+  }
+});
+function setTarget(d, t){
+  $("#marginVal").textContent = t + "%";
+  $("#targetOut").innerHTML = targetOutHtml(d, t);
+  document.querySelectorAll("[data-ladder]").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.ladder) === t)));
+  d.inputs = Object.assign({}, DEFAULT_INPUTS, d.inputs || {}, { targetMarginPct: t });
+  const r = appraise(d.inputs);
+  const tiles = document.querySelector(".tiles"); if (tiles) tiles.outerHTML = tilesHtml(d, r);
+  const f = document.getElementById("in-targetMarginPct"); if (f) f.value = t;
+  clearTimeout(marginTimer);
+  const id = d.id, inputs = d.inputs;
+  marginTimer = setTimeout(() => saveFields(id, { inputs }), 700);
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-ladder],#useOffer"); if (!b) return;
+  const d = currentDeal(); if (!d) return;
+  if (b.dataset.ladder){ const t = Number(b.dataset.ladder); $("#marginRange").value = t; setTarget(d, t); return; }
+  if (b.id === "useOffer" && !state.readOnly){
+    const price = Number($("#offerRange").value);
+    state.offer = null;
+    d.inputs = Object.assign({}, DEFAULT_INPUTS, d.inputs || {}, { purchasePrice: price });
+    renderList(); renderDetail();
+    saveFields(d.id, { inputs: d.inputs });
+  }
+});
+
 function overviewHtml(d){
   const va = (d.valueAdd||[]);
   const vaHtml = va.length ? va.map(o => `<div class="opt">
@@ -570,6 +670,7 @@ function renderDetail(){
       ${v.text?`<div class="verdict ${verdictClass(d)}"><strong>${esc(v.headline||"Verdict")}</strong>${esc(v.text)}</div>`:""}
     </div>
     ${tilesHtml(d, r)}
+    ${marginPanelHtml(d, r)}
     <div class="panel">
       <div class="tabs" role="tablist">${tabs.map(([k,l])=>`<button class="tab" role="tab" id="tab-${k}" aria-controls="pane-${k}" aria-selected="${state.tab===k}" data-tab="${k}" type="button">${l}</button>`).join("")}</div>
       <div class="tabpanel" role="tabpanel" id="pane-overview" aria-labelledby="tab-overview" ${state.tab!=="overview"?"hidden":""}>${overviewHtml(d)}</div>
@@ -671,6 +772,7 @@ document.addEventListener("input", e => {
     const r = appraise(d.inputs);
     $("#calcOut").innerHTML = ledgerHtml(r);
     const tiles = document.querySelector(".tiles"); if (tiles) tiles.outerHTML = tilesHtml(d, r);
+    refreshMarginPanel(d, r);
     renderList();
     clearTimeout(inputTimer);
     const id = d.id, inputs = d.inputs;
@@ -722,7 +824,7 @@ async function refresh(){
     const { data, error } = await SB.from("deals").select("id,data,updated_at").order("updated_at", { ascending: false });
     if (error) throw error;
     if (loadFailed){ loadFailed = false; showBanner(""); }
-    const editing = document.activeElement && ((document.activeElement.dataset && document.activeElement.dataset.key) || document.activeElement.id === "dealNotes");
+    const editing = document.activeElement && ((document.activeElement.dataset && document.activeElement.dataset.key) || ["dealNotes","offerRange","marginRange"].includes(document.activeElement.id));
     const fresh = data.map(r => Object.assign({ id: r.id, _updatedAt: r.updated_at }, r.data || {}));
     if (editing){
       // keep the deal being edited as the user has it; refresh everything else
