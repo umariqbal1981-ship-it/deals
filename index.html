@@ -338,8 +338,8 @@ body{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-ri
     <label for="addNote">Note for the appraisal (optional)</label>
     <input id="addNote" type="text" placeholder="e.g. max budget £300k, interested in HMO">
   </div>
-  <button class="btn primary" type="submit" id="addSubmit">Add for appraisal</button>
-  <p class="small muted addhelp">New links show as <b>Waiting for appraisal</b>. Claude checks for them every few hours and fills in the comparables, layout, planning, costs and returns. To get one done straight away, ask Claude to "appraise my waiting deals".</p>
+  <span style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="submit" id="addSubmit">Add for appraisal</button><button class="btn" type="button" id="btnQuick">Quick check now</button></span>
+  <p class="small muted addhelp">New links show as <b>Waiting for appraisal</b>. Claude checks for them every hour from 7am to 10pm and fills in the comparables, layout, planning, risks, costs and returns. Links added overnight are done first thing.</p>
 </form>
 <div class="installbar" id="installBar" role="region" aria-label="Install the app"><span id="installText">Install Deals on this device for one-tap access.</span><span style="display:flex;gap:6px"><button class="btn primary" type="button" id="btnInstall">Install</button><button class="btn" type="button" id="btnInstallNo">Not now</button></span></div>
 <div class="banner" id="banner" hidden></div>
@@ -356,6 +356,25 @@ body{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-ri
   <button class="mback" id="btnBack" type="button" aria-label="Back to all deals">← All deals</button>
   <section class="detail" id="detail" aria-live="polite"></section>
 </main>
+
+<dialog id="quickDlg">
+  <form id="quickForm">
+    <h3>Quick check</h3>
+    <p class="small muted" style="margin:4px 0 12px">Rate a deal right now from your own figures. It's checked against your rules straight away, and Claude's full appraisal (comparables, planning, risks) follows in the next hourly run, ahead of anything else waiting.</p>
+    <div class="form" style="grid-template-columns:1fr 1fr">
+      <div class="field wide" style="grid-column:1/-1"><label for="q-url">Listing link (optional)</label><input id="q-url" type="url" placeholder="https://…"></div>
+      <div class="field wide" style="grid-column:1/-1"><label for="q-address">Address or name</label><input id="q-address" type="text" required placeholder="e.g. 12 High Street, Leeds LS6"></div>
+      <div class="field"><label for="q-price">Asking or offer price (£)</label><input id="q-price" type="number" inputmode="decimal" required></div>
+      <div class="field"><label for="q-gdv">Value after works (£)</label><input id="q-gdv" type="number" inputmode="decimal" required></div>
+      <div class="field"><label for="q-works">Works budget (£)</label><input id="q-works" type="number" inputmode="decimal" required></div>
+      <div class="field"><label for="q-rent">Rent after works (£/month)</label><input id="q-rent" type="number" inputmode="decimal"></div>
+      <div class="field"><label for="q-months">Months of works</label><input id="q-months" type="number" inputmode="decimal" value="6"></div>
+      <div class="field"><label for="q-type">Type</label><select id="q-type"><option value="additional">House or flat</option><option value="nonresidential">Shop or commercial</option></select></div>
+    </div>
+    <p class="err small" id="quickErr" role="alert" style="color:var(--bad)"></p>
+    <div class="head-actions"><button class="btn primary" type="submit">Rate it now</button><button class="btn" type="button" id="quickCancel">Cancel</button></div>
+  </form>
+</dialog>
 
 <dialog id="rulesDlg">
   <form id="rulesForm">
@@ -977,7 +996,7 @@ function renderDetail(){
       <div class="head"><h2 style="font-size:1.25rem">${esc(d.address || "New listing")}</h2>
         <div class="head-actions"><button class="btn danger" id="btnDelete" type="button" ${state.readOnly?"disabled":""}>Remove</button></div></div>
       ${safeUrl(d.url)?`<a href="${esc(d.url)}" target="_blank" rel="noopener" class="small">${esc(d.url)}</a>`:""}
-      <div class="verdict v-warn"><strong>${failed ? "Couldn't appraise this yet" : "Waiting for appraisal"}</strong>${esc(failed ? (a.message || "The listing couldn't be read. Paste the description and a floor plan screenshot in the chat.") : `Added ${a.requested ? a.requested.slice(0,10) : ""}. Claude checks for new links every few hours and fills in this page. To get it done now, ask Claude to "appraise my waiting deals".`)}</div>
+      <div class="verdict v-warn"><strong>${failed ? "Couldn't appraise this yet" : "Waiting for appraisal"}</strong>${esc(failed ? (a.message || "The listing couldn't be read. Paste the description and a floor plan screenshot in the chat.") : `Added ${a.requested ? a.requested.slice(0,10) : ""}. Claude checks for new links every hour from 7am to 10pm and fills in this page.`)}</div>
       ${a.note?`<p class="small"><b>Your note:</b> ${esc(a.note)}</p>`:""}
     </div>`;
     return;
@@ -1080,6 +1099,43 @@ document.getElementById("rulesForm").addEventListener("submit", async e => {
   if (!state.db || state.readOnly){ $("#rulesErr").textContent = "You can't change the rules from this account."; return; }
   try{ await saveRules(next); state.rules = next; $("#rulesDlg").close(); renderAll(); }
   catch(_){ $("#rulesErr").textContent = "Couldn't save the rules just now. Try again."; }
+});
+
+/* ---------- Quick check ---------- */
+document.addEventListener("click", e => {
+  const t = e.target.closest("#btnQuick,#quickCancel"); if (!t) return;
+  if (t.id === "quickCancel"){ $("#quickDlg").close(); return; }
+  if (!state.db || state.readOnly){ showBanner("Sign in to rate a deal."); return; }
+  $("#quickErr").textContent = "";
+  const u = $("#addUrls").value.trim().split(/\s+/)[0] || ""; if (/^https?:\/\//i.test(u)) $("#q-url").value = u;
+  try{ $("#quickDlg").showModal(); }catch(_){ $("#quickDlg").setAttribute("open",""); }
+  setTimeout(() => $("#q-address").focus(), 50);
+});
+document.getElementById("quickForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const num = id => Number($(id).value) || 0;
+  const url = $("#q-url").value.trim();
+  if (url && !/^https?:\/\//i.test(url)){ $("#quickErr").textContent = "The link must start with https://"; return; }
+  const price = num("#q-price"), gdv = num("#q-gdv");
+  if (!price || !gdv){ $("#quickErr").textContent = "Enter the price and the value after works."; return; }
+  const commercial = $("#q-type").value === "nonresidential";
+  const now = new Date().toISOString();
+  const inputs = Object.assign({}, DEFAULT_INPUTS, { purchasePrice: price, gdv, worksCost: num("#q-works"), monthlyRent: num("#q-rent") || DEFAULT_INPUTS.monthlyRent,
+    monthsWorks: num("#q-months") || 6, buyerType: commercial ? "nonresidential" : "additional", targetMarginPct: R().minMarginPct || 20 });
+  if (commercial){ inputs.bridgeLtv = 65; inputs.bridgeRate = 0.95; }
+  const id = "q" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const deal = { address: $("#q-address").value.trim(), url, status: "Screening", created: now.slice(0, 10), updated: now.slice(0, 10), notes: "",
+    facts: { asking: price }, inputs,
+    verdict: { level: "", headline: "Quick check from your figures", text: "These numbers are the ones you entered, checked against your rules. Claude's full appraisal (comparables, planning, risks, works and exit options) replaces them in the next hourly run." },
+    appraisal: { state: url ? "queued" : "done", requested: now, urgent: true, note: "Quick check entered by hand: price " + price + ", value after works " + gdv + ", works " + inputs.worksCost + ", rent " + inputs.monthlyRent + ". Treat these as the user's starting assumptions." } };
+  try{
+    await queueWrite(() => state.db.doc("deals/" + id).set(deal));
+    $("#quickDlg").close(); $("#quickForm").reset(); $("#addUrls").value = "";
+    if (!state.deals.find(x => x.id === id)) state.deals.unshift(Object.assign({ id }, JSON.parse(JSON.stringify(deal))));
+    state.currentId = id; state.compare = false; state.tab = "overview"; state.filter = "All";
+    showBanner(url ? "Rated from your figures. The full appraisal comes in the next hourly run, ahead of anything else waiting." : "Rated from your figures. Add a listing link and press Re-appraise if you want Claude's full appraisal.");
+    renderAll(); setTimeout(showDetailView, 0);
+  }catch(err){ $("#quickErr").textContent = "Couldn't save just now. Try again."; }
 });
 
 /* ---------- Phone layout ---------- */
