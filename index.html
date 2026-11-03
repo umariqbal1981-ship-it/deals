@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Property Deal Appraisals</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: deal list on the left like a surveyor's file index, the open appraisal on the right; numbers set in mono so columns line up. */
+:root{
+  --paper:#f4f5f2;
+  --card:#ffffff;
+  --ink:#1b232c;
+  --muted:#5d6873;
+  --line:#dde1dc;
+  --accent:#2c5f86;
+  --accent-soft:#e3edf5;
+  --good:#2f7a4a; --good-soft:#e2f2e7;
+  --warn:#9a6a12; --warn-soft:#f8eed8;
+  --bad:#a63a2e; --bad-soft:#f7e3e0;
+  --display:"Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body:"IBM Plex Sans", "Segoe UI", Arial, sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#12171c; --card:#1a2128; --ink:#e7ebee; --muted:#9aa6b0; --line:#2c353e;
+    --accent:#7fb3db; --accent-soft:#1f3242;
+    --good:#7fcf9a; --good-soft:#1c3326; --warn:#e3b45e; --warn-soft:#3a2f17; --bad:#ef8f83; --bad-soft:#3d221f;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#12171c; --card:#1a2128; --ink:#e7ebee; --muted:#9aa6b0; --line:#2c353e;
+  --accent:#7fb3db; --accent-soft:#1f3242;
+  --good:#7fcf9a; --good-soft:#1c3326; --warn:#e3b45e; --warn-soft:#3a2f17; --bad:#ef8f83; --bad-soft:#3d221f;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-0.01em}
+h1{font-size:1.5rem;font-weight:800}
+h2{font-size:1.15rem;font-weight:700}
+h3{font-size:.95rem;font-weight:700}
+a{color:var(--accent)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.small{font-size:.85rem}
+button,select,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 20px;border-bottom:1px solid var(--line);background:var(--card);flex-wrap:wrap}
+.topbar .sub{color:var(--muted);font-size:.85rem}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:6px;padding:7px 12px;font-weight:500}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--card)}
+.btn.danger{color:var(--bad)}
+.addbar{display:grid;grid-template-columns:1fr 260px auto;gap:10px 14px;align-items:end;margin:16px 20px 0;padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:8px}
+.addbar textarea{border:1px solid var(--line);border-radius:5px;padding:7px 9px;background:var(--paper);font-family:var(--mono);font-size:.88rem;resize:vertical;width:100%}
+.addbar .field input{font-family:var(--body)}
+.addbar .addhelp{grid-column:1/-1;margin:0}
+.addbar .btn.primary{height:38px}
+@media (max-width:900px){.addbar{grid-template-columns:1fr}}
+.p-wait{background:var(--warn-soft);color:var(--warn)}
+.deal-item.queued{border-left-color:var(--warn);border-style:dashed solid dashed solid}
+.waitpanel{display:grid;gap:10px;max-width:70ch}
+.banner{margin:12px 20px 0;padding:10px 14px;border-radius:6px;background:var(--warn-soft);color:var(--warn);font-size:.9rem}
+.banner[hidden]{display:none}
+
+.shell{display:grid;grid-template-columns:300px 1fr;gap:20px;padding:20px;align-items:start}
+@media (max-width:900px){.shell{grid-template-columns:1fr}}
+
+.list{display:flex;flex-direction:column;gap:8px}
+.list-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.filter{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:3px 10px;font-size:.8rem}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.deal-item{display:grid;gap:4px;text-align:left;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:6px;padding:10px 12px;width:100%}
+.deal-item[aria-current="true"]{border-color:var(--accent);border-left-color:var(--accent);box-shadow:0 1px 0 var(--accent)}
+.deal-item.v-good{border-left-color:var(--good)}
+.deal-item.v-warn{border-left-color:var(--warn)}
+.deal-item.v-bad{border-left-color:var(--bad)}
+.deal-item .addr{font-weight:600;line-height:1.3}
+.deal-item .row{display:flex;justify-content:space-between;gap:8px;font-size:.82rem;color:var(--muted)}
+
+.pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:.75rem;font-weight:600;white-space:nowrap}
+.p-good{background:var(--good-soft);color:var(--good)}
+.p-warn{background:var(--warn-soft);color:var(--warn)}
+.p-bad{background:var(--bad-soft);color:var(--bad)}
+.p-neutral{background:var(--accent-soft);color:var(--accent)}
+
+.detail{display:flex;flex-direction:column;gap:16px;min-width:0}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:18px}
+.head{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-start}
+.head .facts{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:.88rem;margin-top:6px}
+.head-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.verdict{margin-top:14px;padding:12px 14px;border-radius:6px;border-left:4px solid var(--accent);background:var(--accent-soft)}
+.verdict.v-good{border-left-color:var(--good);background:var(--good-soft)}
+.verdict.v-warn{border-left-color:var(--warn);background:var(--warn-soft)}
+.verdict.v-bad{border-left-color:var(--bad);background:var(--bad-soft)}
+.verdict strong{display:block;font-family:var(--display);margin-bottom:2px}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:10px}
+.tile{border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:var(--card)}
+.tile .k{font-size:.78rem;color:var(--muted)}
+.tile .v{font-family:var(--mono);font-size:1.2rem;font-weight:500}
+.tile .s{font-size:.78rem;color:var(--muted)}
+.tile.good .v{color:var(--good)} .tile.bad .v{color:var(--bad)} .tile.warn .v{color:var(--warn)}
+
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tab{border:none;background:none;padding:8px 12px;border-bottom:2px solid transparent;color:var(--muted);font-weight:600}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tabpanel{padding-top:16px}
+.tabpanel[hidden]{display:none}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:1100px){.grid2{grid-template-columns:1fr}}
+
+.opt{border:1px solid var(--line);border-radius:6px;padding:12px 14px;display:grid;gap:6px}
+.opt-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+.opt-stats{display:flex;gap:16px;flex-wrap:wrap;font-size:.85rem}
+.opt-stats span b{font-weight:600}
+.stack{display:flex;flex-direction:column;gap:10px}
+
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.03em}
+td.r,th.r{text-align:right}
+tr.subject td{background:var(--accent-soft)}
+
+dl.kv{display:grid;grid-template-columns:minmax(140px,max-content) 1fr;gap:6px 16px;margin:0}
+dl.kv dt{color:var(--muted);font-size:.88rem}
+dl.kv dd{margin:0}
+ul.clean{margin:0;padding-left:18px;display:grid;gap:4px}
+.prose{max-width:75ch;white-space:pre-wrap}
+
+.form{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px 14px}
+.field{display:grid;gap:3px}
+.field label{font-size:.78rem;color:var(--muted)}
+.field input,.field select{border:1px solid var(--line);border-radius:5px;padding:6px 8px;background:var(--paper);font-family:var(--mono);font-size:.9rem;width:100%;min-width:0}
+.field select{font-family:var(--body);font-size:.85rem;text-overflow:ellipsis}
+.form .field.wide{grid-column:1/-1}
+fieldset{border:1px solid var(--line);border-radius:6px;padding:12px 14px 14px;margin:0}
+legend{font-family:var(--display);font-weight:700;padding:0 6px}
+.calc-out{display:grid;gap:14px}
+table.ledger td:last-child{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+table.ledger tr.total td{font-weight:600;border-top:2px solid var(--ink)}
+table.ledger tr.sub td{color:var(--muted);font-size:.84rem}
+.save-state{font-size:.8rem;color:var(--muted)}
+textarea.notes{width:100%;min-height:120px;border:1px solid var(--line);border-radius:6px;padding:10px;background:var(--paper);font-family:var(--body)}
+.empty{padding:40px;text-align:center;color:var(--muted)}
+dialog{border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);padding:20px;max-width:420px}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+.auth{max-width:380px;margin:60px auto;padding:24px}
+.auth form{display:grid;gap:12px}
+.auth .err{color:var(--bad);font-size:.88rem;min-height:1.2em;margin:0}
+.who{display:flex;gap:8px;align-items:center;font-size:.85rem;color:var(--muted);flex-wrap:wrap}
+.addtoggle{display:none}
+@media (max-width:900px){
+  .addtoggle{display:inline-block}
+  .addbar:not(.open){display:none}
+  .shell{padding:12px;gap:14px}
+  .addbar{margin:12px 12px 0}
+  .tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .tab{white-space:nowrap}
+  .list .deal-item{padding:8px 10px}
+}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div>
+    <h1>Property Deal Appraisals</h1>
+    <div class="sub">Value-add buys in England: comparables, layout, planning, works, finance, sell or hold</div>
+  </div>
+  <div class="head-actions" id="appActions" hidden>
+    <button class="btn addtoggle" id="btnAddToggle" type="button" aria-expanded="false" aria-controls="addForm">Add links</button>
+    <button class="btn" id="btnAdd" type="button">Add a deal by hand</button>
+    <div class="who"><span id="whoEmail"></span><button class="btn" id="btnPw" type="button">Change password</button><button class="btn" id="btnSignOut" type="button">Sign out</button></div>
+  </div>
+</header>
+<section class="panel auth" id="authPanel" hidden>
+  <h2 style="margin-bottom:6px">Sign in</h2>
+  <p class="small muted" style="margin:0 0 14px">Only people on the access list can see these deals.</p>
+  <form id="loginForm">
+    <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" type="email" autocomplete="username" required></div>
+    <div class="field"><label for="loginPw">Password</label><input id="loginPw" type="password" autocomplete="current-password" required></div>
+    <button class="btn primary" type="submit" id="loginBtn">Sign in</button>
+    <p class="err" id="loginErr" role="alert"></p>
+  </form>
+</section>
+<dialog id="pwDlg">
+  <form id="pwForm">
+    <h3>Change your password</h3>
+    <div class="field" style="margin:12px 0"><label for="newPw">New password (at least 10 characters)</label><input id="newPw" type="password" autocomplete="new-password" minlength="10" required></div>
+    <p class="err small" id="pwErr" role="alert" style="color:var(--bad)"></p>
+    <div class="head-actions"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" id="pwCancel">Cancel</button></div>
+  </form>
+</dialog>
+<form class="addbar" id="addForm" autocomplete="off" hidden>
+  <div class="field grow">
+    <label for="addUrls">Paste listing links (Rightmove, Zoopla, OnTheMarket, agent or auction pages). One per line for several.</label>
+    <textarea id="addUrls" rows="2" placeholder="https://www.rightmove.co.uk/properties/…"></textarea>
+  </div>
+  <div class="field note">
+    <label for="addNote">Note for the appraisal (optional)</label>
+    <input id="addNote" type="text" placeholder="e.g. max budget £300k, interested in HMO">
+  </div>
+  <button class="btn primary" type="submit" id="addSubmit">Add for appraisal</button>
+  <p class="small muted addhelp">New links show as <b>Waiting for appraisal</b>. Claude checks for them every few hours and fills in the comparables, layout, planning, costs and returns. To get one done straight away, ask Claude to "appraise my waiting deals".</p>
+</form>
+<div class="banner" id="banner" hidden></div>
+
+<main class="shell" id="appMain" hidden>
+  <aside class="list" aria-label="Deals">
+    <div class="list-head">
+      <h2>Deals</h2>
+      <span class="muted small" id="count"></span>
+    </div>
+    <div class="filter" role="group" aria-label="Filter by status" id="filters"></div>
+    <div class="list" id="dealList"></div>
+  </aside>
+  <section class="detail" id="detail" aria-live="polite"></section>
+</main>
+
+<dialog id="confirmDlg">
+  <h3>Delete this deal?</h3>
+  <p class="muted small">It is removed from the tracker for everyone who can see it.</p>
+  <div class="head-actions">
+    <button class="btn danger" id="confirmYes" type="button">Delete</button>
+    <button class="btn" id="confirmNo" type="button">Keep it</button>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+const STATUSES = ["Screening","Viewing booked","Offer made","Bought","Passed"];
+const DEFAULT_INPUTS = {
+  purchasePrice: 250000, buyerType: "additional", legalFees: 1800, survey: 750,
+  worksCost: 40000, contingencyPct: 15, profFees: 4000, monthsWorks: 6, holdingMonthly: 250,
+  financeType: "bridge", bridgeLtv: 70, bridgeRate: 0.9, bridgeArrFee: 2, bridgeExitFee: 0, lenderCosts: 2000,
+  gdv: 340000, agentFeePct: 1.2, saleLegal: 1500, monthsToSell: 4, targetMarginPct: 20,
+  monthlyRent: 1500, btlLtv: 75, btlRate: 5.6, btlFeePct: 3, refiCosts: 1500,
+  managementPct: 12, maintenancePct: 8, voidsPct: 4, insuranceAnnual: 450, otherAnnual: 500,
+  taxRatePct: 44, financeCreditPct: 24
+};
+
+/* Example shown only when the tracker can't load its saved deals (e.g. a preview). Clearly labelled. */
+const EXAMPLE = {
+  id: "example", example: true, status: "Screening", updated: "",
+  address: "Example: 3-bed semi needing full modernisation", url: "", postcode: "", council: "",
+  facts: {type:"Semi-detached", beds:3, baths:1, sqm:85, tenure:"Freehold", epc:"E", asking:250000},
+  verdict: {level:"warn", headline:"Example only", text:"Saved deals appear here once the tracker connects. Sign in to see your saved deals."},
+  valueAdd: [], comps: [], planning: {facts:[], notes:"", nearby:[]}, layout: "", risks: [], sources: [],
+  inputs: Object.assign({}, DEFAULT_INPUTS), notes: ""
+};
+
+const state = { deals: [], currentId: null, filter: "All", tab: "overview", db: null, readOnly: false };
+const $ = s => document.querySelector(s);
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const gbp = (n, dp=0) => (n == null || !isFinite(n)) ? "–" : (n < 0 ? "−£" : "£") + Math.abs(n).toLocaleString("en-GB",{minimumFractionDigits:dp,maximumFractionDigits:dp});
+const pct = (n, dp=1) => (n == null || !isFinite(n)) ? "–" : (n*100).toFixed(dp) + "%";
+const safeUrl = u => /^https?:\/\//i.test(u || "") ? u : "";
+
+/* ---------- Money maths ---------- */
+function sdlt(price, buyerType){
+  if (buyerType === "nonresidential"){
+    let t = 0, lo = 0;
+    for (const [up, rate] of [[150000,0],[250000,2],[Infinity,5]]){ if (price > lo) t += (Math.min(price, up) - lo) * rate / 100; lo = up; }
+    return Math.round(t);
+  }
+  const bands = [[125000,0],[250000,2],[925000,5],[1500000,10],[Infinity,12]];
+  let extra = 0;
+  if ((buyerType === "additional" || buyerType === "nonres_additional") && price >= 40000) extra += 5;
+  if (buyerType === "nonres_additional" || buyerType === "nonres_standard") extra += 2;
+  let tax = 0, lower = 0;
+  for (const [upper, rate] of bands){
+    if (price > lower) tax += (Math.min(price, upper) - lower) * (rate + extra) / 100;
+    lower = upper;
+  }
+  return Math.round(tax);
+}
+
+function appraise(raw){
+  const i = Object.assign({}, DEFAULT_INPUTS, raw || {});
+  const n = k => Number(i[k]) || 0;
+  const price = n("purchasePrice");
+  const stamp = sdlt(price, i.buyerType);
+  const acq = stamp + n("legalFees") + n("survey");
+  const contingency = n("worksCost") * n("contingencyPct")/100;
+  const works = n("worksCost") + contingency + n("profFees");
+  const bridging = i.financeType === "bridge";
+  const loan = bridging ? price * n("bridgeLtv")/100 : 0;
+  const finance = months => bridging ? loan * n("bridgeRate")/100 * months + loan * (n("bridgeArrFee") + n("bridgeExitFee"))/100 + n("lenderCosts") : 0;
+
+  // Sell route
+  const mSell = n("monthsWorks") + n("monthsToSell");
+  const finSell = finance(mSell);
+  const holdSell = n("holdingMonthly") * mSell;
+  const costSell = price + acq + works + finSell + holdSell;
+  const saleCosts = n("gdv") * n("agentFeePct")/100 * 1.2 + n("saleLegal");
+  const profit = n("gdv") - saleCosts - costSell;
+  const cashSell = costSell - loan;
+
+  // Refinance and rent route
+  const mHold = n("monthsWorks");
+  const finHold = finance(mHold);
+  const holdHold = n("holdingMonthly") * mHold;
+  const costHold = price + acq + works + finHold + holdHold;
+  const newLoan = n("gdv") * n("btlLtv")/100;
+  const refi = newLoan * n("btlFeePct")/100 + n("refiCosts");
+  const leftIn = costHold + refi - newLoan;
+  const rent = n("monthlyRent") * 12;
+  const opex = rent * (n("managementPct") + n("maintenancePct") + n("voidsPct"))/100 + n("insuranceAnnual") + n("otherAnnual");
+  const interest = newLoan * n("btlRate")/100;
+  const cashflow = rent - opex - interest;
+  const tax = Math.max(0, (rent - opex) * n("taxRatePct")/100 - interest * n("financeCreditPct")/100);
+  const cashflowAfterTax = cashflow - tax;
+
+  return {
+    i, price, stamp, acq, contingency, works, loan,
+    sell: {months:mSell, finance:finSell, holding:holdSell, cost:costSell, saleCosts, profit, margin: costSell ? profit/costSell : NaN, cash:cashSell, roce: cashSell > 0 ? profit/cashSell : NaN},
+    hold: {months:mHold, finance:finHold, holding:holdHold, cost:costHold, newLoan, refi, leftIn, rent, opex, interest, cashflow, tax, cashflowAfterTax,
+      grossYield: n("gdv") ? rent/n("gdv") : NaN, yieldOnCost: costHold ? (rent-opex)/costHold : NaN,
+      roi: leftIn > 0 ? cashflow/leftIn : Infinity, cover: interest ? rent/interest : NaN, equity: n("gdv") - newLoan}
+  };
+}
+
+function maxOffer(inputs){
+  const target = (Number(inputs.targetMarginPct) || 20)/100;
+  let lo = 0, hi = Math.max(Number(inputs.gdv)||0, 1);
+  for (let k=0;k<50;k++){
+    const mid = (lo+hi)/2;
+    const r = appraise(Object.assign({}, inputs, {purchasePrice: mid}));
+    if (r.sell.margin >= target) lo = mid; else hi = mid;
+  }
+  return Math.floor(lo/1000)*1000;
+}
+
+/* ---------- Rendering ---------- */
+function verdictClass(d){ const l = d.verdict && d.verdict.level; return l === "good" ? "v-good" : l === "bad" ? "v-bad" : l === "warn" ? "v-warn" : ""; }
+function statusPill(s){
+  const cls = s === "Bought" ? "p-good" : s === "Passed" ? "p-bad" : s === "Offer made" ? "p-warn" : "p-neutral";
+  return `<span class="pill ${cls}">${esc(s || "Screening")}</span>`;
+}
+
+function renderFilters(){
+  const opts = ["All", "Waiting", ...STATUSES];
+  $("#filters").innerHTML = opts.map(o => `<button type="button" class="chip" data-filter="${esc(o)}" aria-pressed="${state.filter===o}">${esc(o)}</button>`).join("");
+}
+
+const isQueued = d => !!(d.appraisal && (d.appraisal.state === "queued" || d.appraisal.state === "failed"));
+function visibleDeals(){
+  const list = state.deals.length ? state.deals : [EXAMPLE];
+  if (state.filter === "All") return list;
+  if (state.filter === "Waiting") return list.filter(isQueued);
+  return list.filter(d => !isQueued(d) && (d.status||"Screening") === state.filter);
+}
+function hostLabel(u){ try{ const h = new URL(u).hostname.replace(/^www\.|^app\./,""); return h; }catch(_){ return "link"; } }
+
+function renderList(){
+  const deals = visibleDeals();
+  $("#count").textContent = state.deals.length ? `${state.deals.length} saved` : "";
+  if (!deals.length){ $("#dealList").innerHTML = `<p class="muted small">No deals with this status.</p>`; return; }
+  $("#dealList").innerHTML = deals.map(d => {
+    if (isQueued(d)){
+      const failed = d.appraisal.state === "failed";
+      return `<button type="button" class="deal-item queued" data-id="${esc(d.id)}" aria-current="${d.id===state.currentId}">
+        <span class="addr">${esc(d.address || "New listing")}</span>
+        <span class="row"><span>${esc(hostLabel(d.url))}</span><span class="pill p-wait">${failed ? "Needs your help" : d.inputs ? "Re-appraisal requested" : "Waiting for appraisal"}</span></span>
+      </button>`;
+    }
+    const r = appraise(d.inputs);
+    return `<button type="button" class="deal-item ${verdictClass(d)}" data-id="${esc(d.id)}" aria-current="${d.id===state.currentId}">
+      <span class="addr">${esc(d.address || "Untitled deal")}</span>
+      <span class="row"><span>Price <span class="num">${gbp(r.price)}</span></span>${statusPill(d.status)}</span>
+      <span class="row"><span>Sell profit <span class="num">${gbp(r.sell.profit)}</span></span><span>Left in <span class="num">${gbp(Math.max(0,r.hold.leftIn))}</span></span></span>
+    </button>`;
+  }).join("");
+}
+
+function currentDeal(){
+  const all = state.deals.length ? state.deals : [EXAMPLE];
+  return all.find(d => d.id === state.currentId) || all[0];
+}
+
+function tilesHtml(d, r){
+  const mo = maxOffer(d.inputs || {});
+  const m = r.sell.margin;
+  const sellCls = m >= 0.2 ? "good" : m >= 0.1 ? "warn" : "bad";
+  const leftCls = r.hold.leftIn <= 0 ? "good" : r.hold.leftIn < r.price*0.25 ? "warn" : "bad";
+  const cfCls = r.hold.cashflow > 0 ? "good" : "bad";
+  return `<div class="tiles">
+    <div class="tile"><div class="k">Purchase price</div><div class="v">${gbp(r.price)}</div><div class="s">Asking ${gbp(d.facts && d.facts.asking)}</div></div>
+    <div class="tile"><div class="k">Value after works</div><div class="v">${gbp(r.i.gdv)}</div><div class="s">from sold comparables</div></div>
+    <div class="tile"><div class="k">All-in cost (sell route)</div><div class="v">${gbp(r.sell.cost)}</div><div class="s">incl. Stamp Duty ${gbp(r.stamp)}</div></div>
+    <div class="tile ${sellCls}"><div class="k">Profit if sold</div><div class="v">${gbp(r.sell.profit)}</div><div class="s">${pct(m)} on cost, before tax</div></div>
+    <div class="tile ${leftCls}"><div class="k">Cash left in after refinance</div><div class="v">${gbp(r.hold.leftIn)}</div><div class="s">${r.hold.leftIn<=0?"all money out":"stays in the deal"}</div></div>
+    <div class="tile ${cfCls}"><div class="k">Cash flow if rented</div><div class="v">${gbp(r.hold.cashflow/12)}/m</div><div class="s">before tax · gross yield ${pct(r.hold.grossYield)}</div></div>
+    <div class="tile"><div class="k">Max offer for ${esc(r.i.targetMarginPct)}% margin</div><div class="v">${gbp(mo)}</div><div class="s">sell route, same works and value</div></div>
+  </div>`;
+}
+
+function overviewHtml(d){
+  const va = (d.valueAdd||[]);
+  const vaHtml = va.length ? va.map(o => `<div class="opt">
+      <div class="opt-head"><h3>${esc(o.title)}</h3><span class="pill ${o.route && /permitted/i.test(o.route) ? "p-good" : /prior/i.test(o.route||"") ? "p-warn" : "p-neutral"}">${esc(o.route||"")}</span></div>
+      <div class="opt-stats"><span>Cost <b>${esc(o.cost||"–")}</b></span><span>Value added <b>${esc(o.uplift||"–")}</b></span>${o.risk?`<span>Risk <b>${esc(o.risk)}</b></span>`:""}</div>
+      ${o.detail?`<p class="small" style="margin:0">${esc(o.detail)}</p>`:""}
+    </div>`).join("") : `<p class="muted small">No value-add options recorded yet.</p>`;
+  return `<div class="grid2">
+    <div class="stack"><h2>Where the value is</h2>${vaHtml}</div>
+    <div class="stack">
+      <h2>Layout and floor plan</h2>
+      <div class="prose small">${esc(d.layout || "Not reviewed yet.")}</div>
+      <h2>Key risks</h2>
+      ${(d.risks||[]).length ? `<ul class="clean small">${d.risks.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>` : `<p class="muted small">None recorded.</p>`}
+    </div>
+  </div>`;
+}
+
+function compsHtml(d){
+  const comps = d.comps || [];
+  if (!comps.length) return `<p class="muted">No comparables recorded yet.</p>`;
+  const ppsm = comps.filter(c => c.price && c.sqm).map(c => c.price/c.sqm).sort((a,b)=>a-b);
+  const median = ppsm.length ? (ppsm.length%2 ? ppsm[(ppsm.length-1)/2] : (ppsm[ppsm.length/2-1]+ppsm[ppsm.length/2])/2) : null;
+  const afterSqm = d.facts && (d.facts.sqmAfter || d.facts.sqm);
+  const rows = comps.map(c => `<tr>
+      <td>${safeUrl(c.url)?`<a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.address)}</a>`:esc(c.address)}</td>
+      <td class="num">${esc(c.date||"")}</td><td class="r num">${gbp(c.price)}</td>
+      <td>${esc(c.type||"")}</td><td class="r num">${esc(c.beds??"")}</td><td class="r num">${c.sqm?esc(c.sqm):"–"}</td>
+      <td class="r num">${c.price&&c.sqm?gbp(c.price/c.sqm):"–"}</td><td class="small">${esc(c.note||"")}</td></tr>`).join("");
+  return `<div class="stack">
+    <p class="small muted" style="margin:0">Sold prices from HM Land Registry records. Sizes come from EPC certificates where available.</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Address</th><th>Sold</th><th class="r">Price</th><th>Type</th><th class="r">Beds</th><th class="r">m²</th><th class="r">£/m²</th><th>Condition / notes</th></tr></thead>
+      <tbody>${rows}${median?`<tr class="subject"><td colspan="5"><b>This property after works</b>${afterSqm?` at ${esc(afterSqm)} m² × median ${gbp(median)}/m²`:""}</td><td class="r num">${afterSqm?esc(afterSqm):"–"}</td><td class="r num">${gbp(median)}</td><td class="num">${afterSqm?gbp(afterSqm*median):""}</td></tr>`:""}</tbody>
+    </table></div>
+    ${d.compsNote?`<p class="small prose">${esc(d.compsNote)}</p>`:""}
+  </div>`;
+}
+
+function planningHtml(d){
+  const p = d.planning || {};
+  const facts = (p.facts||[]).map(f => `<dt>${esc(f.label)}</dt><dd>${esc(f.value)}</dd>`).join("");
+  const nearby = (p.nearby||[]).map(n => `<li>${safeUrl(n.url)?`<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.address)}</a>`:esc(n.address)} – ${esc(n.desc)} ${n.outcome?`<span class="muted">(${esc(n.outcome)})</span>`:""}</li>`).join("");
+  return `<div class="grid2">
+    <div class="stack"><h2>Planning position</h2>${facts?`<dl class="kv small">${facts}</dl>`:`<p class="muted small">Not checked yet.</p>`}
+      ${p.notes?`<div class="prose small">${esc(p.notes)}</div>`:""}</div>
+    <div class="stack"><h2>Nearby applications</h2>${nearby?`<ul class="clean small">${nearby}</ul>`:`<p class="muted small">None recorded.</p>`}</div>
+  </div>`;
+}
+
+const FIELDS = [
+  ["Purchase", [
+    ["purchasePrice","Purchase price (£)"],
+    ["buyerType","Stamp Duty basis","select wide",[["additional","Additional property (+5%)"],["standard","Standard rates"],["nonres_additional","Non-UK resident, additional (+7%)"],["nonresidential","Commercial / mixed-use (0/2/5%)"]]],
+    ["legalFees","Legal fees (£)"],["survey","Survey (£)"]]],
+  ["Works", [
+    ["worksCost","Build and refurb cost (£)"],["contingencyPct","Contingency (%)"],["profFees","Architect, planning, building control, party wall (£)"],
+    ["monthsWorks","Months to finish works"],["holdingMonthly","Holding costs while empty (£/month)"]]],
+  ["Bridging finance", [
+    ["financeType","Funding","select wide",[["bridge","Bridging loan on purchase"],["cash","Cash"]]],
+    ["bridgeLtv","Loan to value (%)"],["bridgeRate","Interest (% per month)"],["bridgeArrFee","Arrangement fee (%)"],["bridgeExitFee","Exit fee (%)"],["lenderCosts","Valuation and lender legal (£)"]]],
+  ["If you sell", [
+    ["gdv","Value after works (£)"],["agentFeePct","Agent fee (% + VAT)"],["saleLegal","Sale legal fees (£)"],["monthsToSell","Months to sell after works"],["targetMarginPct","Target profit on cost (%)"]]],
+  ["If you refinance and rent", [
+    ["monthlyRent","Rent (£/month)"],["btlLtv","Buy-to-let loan to value (%)"],["btlRate","Buy-to-let rate (%)"],["btlFeePct","Product fee (%)"],["refiCosts","Refinance legal and valuation (£)"],
+    ["managementPct","Letting and management (% of rent)"],["maintenancePct","Maintenance (% of rent)"],["voidsPct","Voids (% of rent)"],["insuranceAnnual","Landlord insurance (£/yr)"],["otherAnnual","Safety certificates, licensing, other (£/yr)"],
+    ["taxRatePct","Your tax rate on rental profit (%)"],["financeCreditPct","Mortgage interest tax credit (%)"]]]
+];
+
+function numbersHtml(d){
+  const i = Object.assign({}, DEFAULT_INPUTS, d.inputs||{});
+  const dis = (state.readOnly || d.example) ? "disabled" : "";
+  const form = FIELDS.map(([title, fields]) => `<fieldset><legend>${esc(title)}</legend><div class="form">${fields.map(([k,label,type,opts]) => (type||"").startsWith("select")
+      ? `<div class="field${type==="select wide"?" wide":""}"><label for="in-${k}">${esc(label)}</label><select id="in-${k}" data-key="${k}" ${dis}>${opts.map(([v,l])=>`<option value="${v}" ${i[k]===v?"selected":""}>${esc(l)}</option>`).join("")}</select></div>`
+      : `<div class="field"><label for="in-${k}">${esc(label)}</label><input id="in-${k}" data-key="${k}" type="number" step="any" inputmode="decimal" value="${esc(i[k])}" ${dis}></div>`).join("")}</div></fieldset>`).join("");
+  return `<div class="grid2">
+    <div class="stack"><div class="head"><h2>Assumptions</h2><span class="save-state" id="saveState"></span></div>${form}
+      <p class="small muted">Stamp Duty uses England and Northern Ireland bands. Shops and other commercial buildings use the commercial rates, even if you plan to convert them to homes. Tax credit and rates are editable assumptions, so check them with your accountant. Personal rental profit tax rises from April 2027, and a sale soon after works may be taxed as trading income rather than capital gains.</p></div>
+    <div class="calc-out" id="calcOut"></div>
+  </div>`;
+}
+
+function ledgerHtml(r){
+  const row = (l,v,c="") => `<tr class="${c}"><td>${l}</td><td>${gbp(v)}</td></tr>`;
+  const sens = [["Base case",{}],["Value 5% lower",{gdv:r.i.gdv*0.95}],["Value 10% lower",{gdv:r.i.gdv*0.9}],["Works 20% over",{worksCost:r.i.worksCost*1.2}],["Both: value −10%, works +20%",{gdv:r.i.gdv*0.9,worksCost:r.i.worksCost*1.2}],["Three months' delay",{monthsWorks:Number(r.i.monthsWorks)+3}]]
+    .map(([l,ch]) => { const x = appraise(Object.assign({}, r.i, ch)); return `<tr><td>${l}</td><td class="r num">${gbp(x.sell.profit)}</td><td class="r num">${pct(x.sell.margin)}</td><td class="r num">${gbp(x.hold.leftIn)}</td></tr>`; }).join("");
+  const roi = r.hold.roi === Infinity ? "infinite (no cash left in)" : pct(r.hold.roi);
+  return `
+  <div class="panel"><h3>Costs to complete</h3><table class="ledger"><tbody>
+    ${row("Purchase price", r.price)}
+    ${row("Stamp Duty", r.stamp, "sub")}${row("Legal and survey", r.acq - r.stamp, "sub")}
+    ${row("Build and refurb", Number(r.i.worksCost), "sub")}${row(`Contingency (${r.i.contingencyPct}%)`, r.contingency, "sub")}${row("Professional fees", Number(r.i.profFees), "sub")}
+    ${row(`Bridging costs over ${r.sell.months} months`, r.sell.finance, "sub")}${row("Holding costs", r.sell.holding, "sub")}
+    ${row("All-in cost (sell route)", r.sell.cost, "total")}
+    ${row("Bridging loan", r.loan, "sub")}${row("Your cash needed", r.sell.cash, "total")}
+  </tbody></table></div>
+  <div class="panel"><h3>Sell after works</h3><table class="ledger"><tbody>
+    ${row("Sale price", Number(r.i.gdv))}${row("Agent and legal fees", -r.sell.saleCosts, "sub")}${row("All-in cost", -r.sell.cost, "sub")}
+    ${row("Profit before tax", r.sell.profit, "total")}
+    <tr class="sub"><td>Profit on cost · return on your cash</td><td>${pct(r.sell.margin)} · ${pct(r.sell.roce)}</td></tr>
+  </tbody></table></div>
+  <div class="panel"><h3>Refinance and rent</h3><table class="ledger"><tbody>
+    ${row(`All-in cost to end of works (${r.hold.months} months)`, r.hold.cost)}
+    ${row(`New buy-to-let loan (${r.i.btlLtv}% of value)`, -r.hold.newLoan, "sub")}${row("Refinance fees", r.hold.refi, "sub")}
+    ${row("Cash left in the deal", r.hold.leftIn, "total")}
+    ${row("Annual rent", r.hold.rent)}${row("Running costs", -r.hold.opex, "sub")}${row("Mortgage interest (interest only)", -r.hold.interest, "sub")}
+    ${row("Annual cash flow before tax", r.hold.cashflow, "total")}
+    ${row("Estimated tax on rental profit", -r.hold.tax, "sub")}${row("Annual cash flow after tax", r.hold.cashflowAfterTax, "total")}
+    <tr class="sub"><td>Return on cash left in</td><td>${roi}</td></tr>
+    <tr class="sub"><td>Rent ÷ interest (lenders typically need 125–145% at a stressed rate)</td><td>${pct(r.hold.cover,0)}</td></tr>
+    <tr class="sub"><td>Equity left in the property</td><td>${gbp(r.hold.equity)}</td></tr>
+  </tbody></table></div>
+  <div class="panel"><h3>What if it goes wrong</h3><div class="tablewrap"><table><thead><tr><th>Scenario</th><th class="r">Sell profit</th><th class="r">On cost</th><th class="r">Left in if rented</th></tr></thead><tbody>${sens}</tbody></table></div></div>`;
+}
+
+function notesHtml(d){
+  const src = (d.sources||[]).map(s => `<li>${safeUrl(s.url)?`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title||s.url)}</a>`:esc(s.title)}</li>`).join("");
+  const dis = (state.readOnly || d.example) ? "disabled" : "";
+  return `<div class="grid2">
+    <div class="stack"><h2>Your notes</h2><label for="dealNotes" class="small muted">Viewing notes, agent conversations, offers. Saved automatically.</label>
+      <textarea class="notes" id="dealNotes" ${dis}>${esc(d.notes||"")}</textarea><span class="save-state" id="notesState"></span></div>
+    <div class="stack"><h2>Sources</h2>${src?`<ul class="clean small">${src}</ul>`:`<p class="muted small">None recorded.</p>`}</div>
+  </div>`;
+}
+
+function renderDetail(){
+  const d = currentDeal();
+  if (!d){ $("#detail").innerHTML = `<div class="panel empty">No deals yet.</div>`; return; }
+  state.currentId = d.id;
+  if (isQueued(d) && !d.inputs){
+    const a = d.appraisal || {};
+    const failed = a.state === "failed";
+    $("#detail").innerHTML = `<div class="panel waitpanel">
+      <div class="head"><h2 style="font-size:1.25rem">${esc(d.address || "New listing")}</h2>
+        <div class="head-actions"><button class="btn danger" id="btnDelete" type="button" ${state.readOnly?"disabled":""}>Remove</button></div></div>
+      ${safeUrl(d.url)?`<a href="${esc(d.url)}" target="_blank" rel="noopener" class="small">${esc(d.url)}</a>`:""}
+      <div class="verdict v-warn"><strong>${failed ? "Couldn't appraise this yet" : "Waiting for appraisal"}</strong>${esc(failed ? (a.message || "The listing couldn't be read. Paste the description and a floor plan screenshot in the chat.") : `Added ${a.requested ? a.requested.slice(0,10) : ""}. Claude checks for new links every few hours and fills in this page. To get it done now, ask Claude to "appraise my waiting deals".`)}</div>
+      ${a.note?`<p class="small"><b>Your note:</b> ${esc(a.note)}</p>`:""}
+    </div>`;
+    return;
+  }
+  const r = appraise(d.inputs);
+  const f = d.facts || {};
+  const facts = [f.type, f.beds!=null?`${f.beds} bed`:"", f.baths!=null?`${f.baths} bath`:"", f.sqm?`${f.sqm} m²`:"", f.tenure, f.epc?`EPC ${f.epc}`:"", d.council].filter(Boolean).map(x=>`<span>${esc(x)}</span>`).join("");
+  const v = d.verdict || {};
+  const dis = (state.readOnly || d.example) ? "disabled" : "";
+  const tabs = [["overview","Value-add and layout"],["comps","Sold comparables"],["planning","Planning"],["numbers","Costs and returns"],["notes","Notes and sources"]];
+  $("#detail").innerHTML = `
+    <div class="panel">
+      <div class="head">
+        <div><h2 style="font-size:1.35rem">${esc(d.address||"Untitled deal")}</h2><div class="facts">${facts}</div>
+          ${safeUrl(d.url)?`<div class="small" style="margin-top:4px"><a href="${esc(d.url)}" target="_blank" rel="noopener">Open the listing</a>${d.updated?` <span class="muted">· appraised ${esc(d.updated)}</span>`:""}</div>`:""}</div>
+        <div class="head-actions">
+          <label class="small muted" for="statusSel">Status</label>
+          <select id="statusSel" class="btn" ${dis}>${STATUSES.map(s=>`<option ${s===(d.status||"Screening")?"selected":""}>${s}</option>`).join("")}</select>
+          ${d.example?"":`<button class="btn" id="btnReappraise" type="button" ${dis} title="Refresh comparables, planning and costs">${isQueued(d)?"Re-appraisal requested":"Re-appraise"}</button><button class="btn danger" id="btnDelete" type="button" ${dis}>Delete</button>`}
+        </div>
+      </div>
+      ${v.text?`<div class="verdict ${verdictClass(d)}"><strong>${esc(v.headline||"Verdict")}</strong>${esc(v.text)}</div>`:""}
+    </div>
+    ${tilesHtml(d, r)}
+    <div class="panel">
+      <div class="tabs" role="tablist">${tabs.map(([k,l])=>`<button class="tab" role="tab" id="tab-${k}" aria-controls="pane-${k}" aria-selected="${state.tab===k}" data-tab="${k}" type="button">${l}</button>`).join("")}</div>
+      <div class="tabpanel" role="tabpanel" id="pane-overview" aria-labelledby="tab-overview" ${state.tab!=="overview"?"hidden":""}>${overviewHtml(d)}</div>
+      <div class="tabpanel" role="tabpanel" id="pane-comps" aria-labelledby="tab-comps" ${state.tab!=="comps"?"hidden":""}>${compsHtml(d)}</div>
+      <div class="tabpanel" role="tabpanel" id="pane-planning" aria-labelledby="tab-planning" ${state.tab!=="planning"?"hidden":""}>${planningHtml(d)}</div>
+      <div class="tabpanel" role="tabpanel" id="pane-numbers" aria-labelledby="tab-numbers" ${state.tab!=="numbers"?"hidden":""}>${numbersHtml(d)}</div>
+      <div class="tabpanel" role="tabpanel" id="pane-notes" aria-labelledby="tab-notes" ${state.tab!=="notes"?"hidden":""}>${notesHtml(d)}</div>
+    </div>`;
+  $("#calcOut").innerHTML = ledgerHtml(r);
+}
+
+function renderAll(){ renderFilters(); renderList(); renderDetail(); }
+
+/* ---------- Saving ---------- */
+let inputTimer = null, notesTimer = null, writing = Promise.resolve();
+function queueWrite(fn){ writing = writing.then(fn, fn); return writing; }
+function showBanner(msg){ const b = $("#banner"); b.textContent = msg; b.hidden = !msg; }
+
+async function saveFields(id, patch, stateEl){
+  if (!state.db || state.readOnly || id === "example") return;
+  if (stateEl) stateEl.textContent = "Saving…";
+  try{
+    await queueWrite(() => state.db.doc("deals/" + id).update(patch));
+    const el = stateEl && document.getElementById(stateEl.id); if (el) el.textContent = "Saved";
+  }catch(e){
+    if (e && e.code === "not_found"){ showBanner("That deal was changed or removed by someone else. The latest version is shown."); refresh(); }
+    else showBanner("Couldn't save just now. Your change shows here but may not be stored; try again in a moment.");
+    const el = stateEl && document.getElementById(stateEl.id); if (el) el.textContent = "Not saved";
+  }
+}
+
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-filter],[data-id],[data-tab],#btnDelete,#btnAdd,#btnReappraise,#confirmYes,#confirmNo");
+  if (!t) return;
+  if (t.dataset.filter){ state.filter = t.dataset.filter; renderList(); renderFilters(); return; }
+  if (t.dataset.id){ state.currentId = t.dataset.id; renderList(); renderDetail(); return; }
+  if (t.dataset.tab){ state.tab = t.dataset.tab; renderDetail(); return; }
+  if (t.id === "btnDelete"){ const dlg = $("#confirmDlg"); try{ dlg.showModal(); }catch(_){ dlg.setAttribute("open",""); } return; }
+  if (t.id === "confirmNo"){ $("#confirmDlg").close(); return; }
+  if (t.id === "confirmYes"){
+    $("#confirmDlg").close();
+    const id = state.currentId;
+    if (state.db && id !== "example") queueWrite(() => state.db.doc("deals/"+id).delete()).catch(()=>showBanner("Couldn't delete that deal. Try again."));
+    return;
+  }
+  if (t.id === "btnAdd"){ addDeal(); }
+  if (t.id === "btnReappraise"){
+    const d = currentDeal(); if (!d || isQueued(d)) return;
+    d.appraisal = {state:"queued", requested:new Date().toISOString(), note:"Re-appraisal requested from the tracker"};
+    renderList(); renderDetail();
+    saveFields(d.id, {appraisal: d.appraisal});
+  }
+});
+
+document.getElementById("addForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  if (!state.db || state.readOnly){ showBanner("Sign in to add links."); return; }
+  const raw = $("#addUrls").value.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
+  const urls = [...new Set(raw.filter(u => /^https?:\/\/[^\s]+\.[^\s]+/i.test(u)).map(u => u.replace(/#.*$/,"")))];
+  const bad = raw.length - raw.filter(u => /^https?:\/\//i.test(u)).length;
+  if (!urls.length){ showBanner("Paste at least one full link starting with https://"); return; }
+  const known = new Set(state.deals.map(d => (d.url||"").replace(/#.*$/,"")));
+  const fresh = urls.filter(u => !known.has(u));
+  const note = $("#addNote").value.trim();
+  const btn = $("#addSubmit"); btn.disabled = true; btn.textContent = "Adding…";
+  let added = 0, firstId = null;
+  for (const u of fresh){
+    const id = "q" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+    const host = hostLabel(u);
+    const m = u.match(/(\d{6,})/);
+    const now = new Date().toISOString();
+    try{
+      await queueWrite(() => state.db.doc("deals/"+id).set({ address: `${host} listing${m?" "+m[1]:""}`, url: u, status: "Screening", created: now.slice(0,10), updated: now.slice(0,10), appraisal: {state:"queued", requested: now, note}, notes: "" }));
+      added++; firstId = firstId || id;
+    }catch(err){ showBanner(err && err.code === "quota_exceeded" ? "The tracker is full. Delete some old deals first." : "Couldn't add that link just now. Try again."); break; }
+  }
+  btn.disabled = false; btn.textContent = "Add for appraisal";
+  const skipped = urls.length - fresh.length;
+  if (added){ $("#addUrls").value = ""; $("#addNote").value = ""; state.currentId = firstId; state.filter = "All"; }
+  showBanner([added?`Added ${added} link${added>1?"s":""} for appraisal.`:"", skipped?`${skipped} already in your tracker.`:"", bad?`${bad} item${bad>1?"s weren't links":" wasn't a link"}.`:""].filter(Boolean).join(" "));
+});
+
+async function addDeal(){
+  if (!state.db || state.readOnly){ showBanner("Sign in to add deals."); return; }
+  const id = "d" + Date.now().toString(36);
+  const today = new Date().toISOString().slice(0,10);
+  const deal = { address:"New deal (enter details)", status:"Screening", created: today, updated: today, url:"", facts:{}, verdict:{}, valueAdd:[], comps:[], planning:{facts:[],notes:"",nearby:[]}, layout:"", risks:[], sources:[], inputs:Object.assign({}, DEFAULT_INPUTS), notes:"" };
+  try{ await queueWrite(() => state.db.doc("deals/"+id).set(deal)); state.currentId = id; state.tab = "numbers"; }
+  catch(e){ showBanner(e && e.code === "quota_exceeded" ? "The tracker is full. Delete some old deals first." : "Couldn't add a deal just now. Try again."); }
+}
+
+document.addEventListener("input", e => {
+  const el = e.target;
+  const d = currentDeal(); if (!d) return;
+  if (el.dataset && el.dataset.key){
+    const k = el.dataset.key;
+    const val = el.tagName === "SELECT" ? el.value : (el.value === "" ? 0 : Number(el.value));
+    d.inputs = Object.assign({}, DEFAULT_INPUTS, d.inputs || {}, {[k]: val});
+    const r = appraise(d.inputs);
+    $("#calcOut").innerHTML = ledgerHtml(r);
+    const tiles = document.querySelector(".tiles"); if (tiles) tiles.outerHTML = tilesHtml(d, r);
+    renderList();
+    clearTimeout(inputTimer);
+    const id = d.id, inputs = d.inputs;
+    inputTimer = setTimeout(() => saveFields(id, {inputs}, $("#saveState")), 700);
+  } else if (el.id === "dealNotes"){
+    d.notes = el.value;
+    clearTimeout(notesTimer);
+    const id = d.id, notes = el.value;
+    notesTimer = setTimeout(() => saveFields(id, {notes}, $("#notesState")), 900);
+  }
+});
+document.addEventListener("change", e => {
+  if (e.target.id === "statusSel"){ const d = currentDeal(); d.status = e.target.value; renderList(); saveFields(d.id, {status: d.status}); }
+  else if (e.target.dataset && e.target.dataset.key && e.target.tagName === "SELECT"){ e.target.dispatchEvent(new Event("input", {bubbles:true})); }
+});
+
+/* ---------- Data (Supabase) ---------- */
+const SB = window.supabase.createClient("https://qpdnglnjqffahcvoiore.supabase.co", "sb_publishable_AAjoQGPWl-rZKjRYo6Fnxg_sm8MhJ2M", { auth: { persistSession: true, autoRefreshToken: true } });
+let channel = null, refreshQueued = false, refreshing = false, loadFailed = false;
+
+function dbError(error){ const e = new Error(error.message || "error"); e.code = error.code === "PGRST116" ? "not_found" : (error.code || "error"); return e; }
+const shimDb = {
+  doc(path){
+    const id = path.split("/")[1];
+    return {
+      async update(patch){
+        const { data, error } = await SB.rpc("patch_deal", { p_id: id, p_patch: patch });
+        if (error) throw dbError(error);
+        if (data == null){ const e = new Error("missing"); e.code = "not_found"; throw e; }
+      },
+      async set(obj){
+        const { error } = await SB.from("deals").upsert({ id, data: obj });
+        if (error) throw dbError(error);
+        refresh();
+      },
+      async delete(){
+        const { error } = await SB.from("deals").delete().eq("id", id);
+        if (error) throw dbError(error);
+        refresh();
+      }
+    };
+  }
+};
+
+async function refresh(){
+  if (refreshing){ refreshQueued = true; return; }
+  refreshing = true;
+  try{
+    const { data, error } = await SB.from("deals").select("id,data,updated_at").order("updated_at", { ascending: false });
+    if (error) throw error;
+    if (loadFailed){ loadFailed = false; showBanner(""); }
+    const editing = document.activeElement && ((document.activeElement.dataset && document.activeElement.dataset.key) || document.activeElement.id === "dealNotes");
+    const fresh = data.map(r => Object.assign({ id: r.id, _updatedAt: r.updated_at }, r.data || {}));
+    if (editing){
+      // keep the deal being edited as the user has it; refresh everything else
+      const cur = state.deals.find(x => x.id === state.currentId);
+      state.deals = fresh.map(x => (cur && x.id === cur.id) ? Object.assign(x, { inputs: cur.inputs, notes: cur.notes }) : x);
+      renderList();
+    } else {
+      state.deals = fresh;
+      if (state.currentId && !state.deals.find(x => x.id === state.currentId)) state.currentId = null;
+      renderAll();
+    }
+  }catch(e){
+    loadFailed = true; showBanner("Couldn't load saved deals. Check your connection and reload the page.");
+  }finally{
+    refreshing = false;
+    if (refreshQueued){ refreshQueued = false; refresh(); }
+  }
+}
+
+function showApp(session){
+  const signedIn = !!session;
+  $("#authPanel").hidden = signedIn;
+  $("#appMain").hidden = !signedIn;
+  $("#addForm").hidden = !signedIn;
+  $("#appActions").hidden = !signedIn;
+  if (!signedIn){
+    state.db = null; state.deals = [];
+    if (channel){ SB.removeChannel(channel); channel = null; }
+    showBanner("");
+    return;
+  }
+  $("#whoEmail").textContent = session.user.email || "";
+  state.db = shimDb;
+  if (!channel){
+    channel = SB.channel("deals-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "deals" }, () => refresh())
+      .subscribe();
+  }
+  SB.rpc("is_allowed").then(({ data }) => {
+    if (data === false){ state.readOnly = true; showBanner("You're signed in, but your email isn't on the access list for these deals. Ask Umar to add you."); }
+    else state.readOnly = false;
+  });
+  refresh();
+}
+
+$("#loginForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const btn = $("#loginBtn"); btn.disabled = true; $("#loginErr").textContent = "";
+  const { error } = await SB.auth.signInWithPassword({ email: $("#loginEmail").value.trim(), password: $("#loginPw").value });
+  btn.disabled = false;
+  if (error) $("#loginErr").textContent = /invalid/i.test(error.message) ? "That email and password don't match." : "Couldn't sign in just now. Try again.";
+  else $("#loginPw").value = "";
+});
+$("#btnSignOut").addEventListener("click", () => SB.auth.signOut());
+$("#btnPw").addEventListener("click", () => { $("#pwErr").textContent = ""; $("#newPw").value = ""; $("#pwDlg").showModal(); });
+$("#pwCancel").addEventListener("click", () => $("#pwDlg").close());
+$("#pwForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const { error } = await SB.auth.updateUser({ password: $("#newPw").value });
+  if (error){ $("#pwErr").textContent = error.message; return; }
+  $("#pwDlg").close(); showBanner("Password changed.");
+});
+$("#btnAddToggle").addEventListener("click", e => {
+  const open = $("#addForm").classList.toggle("open");
+  e.currentTarget.setAttribute("aria-expanded", String(open));
+});
+document.addEventListener("visibilitychange", () => { if (!document.hidden && state.db) refresh(); });
+
+renderAll();
+let lastSession;
+SB.auth.onAuthStateChange((_event, session) => {
+  const id = session && session.user && session.user.id;
+  if (id === lastSession) return;   // token refreshes don't need a reload
+  lastSession = id;
+  showApp(session);
+});
+</script>
+</body>
+</html>
