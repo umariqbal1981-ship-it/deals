@@ -394,7 +394,7 @@ ul.pchecks li{display:grid;grid-template-columns:18px 1fr;gap:6px}
       <div class="field"><label for="q-rent">Rent after works (£/month)</label><input id="q-rent" type="number" inputmode="decimal"></div>
       <div class="field"><label for="q-months">Months of works</label><input id="q-months" type="number" inputmode="decimal" value="6"></div>
       <div class="field"><label for="q-type">Type</label><select id="q-type"><option value="house">House</option><option value="flat">Flat or maisonette</option><option value="nonresidential">Shop or commercial</option></select></div>
-      <div class="field" style="grid-column:1/-1"><label for="q-plan">What would you add?</label><select id="q-plan"><option value="refurb">Refurbish only</option><option value="bedroom">Extra bedroom inside (reconfigure)</option><option value="garage">Convert the garage</option><option value="rear">Rear extension</option><option value="loft">Loft conversion</option><option value="hmo">Small HMO</option><option value="flats">Split into flats</option><option value="commercial">Shop to homes (Class MA)</option></select></div>
+      <div class="field" style="grid-column:1/-1"><label for="q-plan">What would you add?</label><select id="q-plan"><option value="refurb">Refurbish only</option><option value="bedroom">Extra bedroom inside (e.g. 1-bed flat to 2-bed)</option><option value="garage">Convert the garage</option><option value="rear">Rear extension</option><option value="loft">Loft conversion</option><option value="hmo">Small HMO</option><option value="flats">Split into flats</option><option value="commercial">Shop to homes (Class MA)</option></select></div>
     </div>
     <p class="err small" id="quickErr" role="alert" style="color:var(--bad)"></p>
     <div class="head-actions"><button class="btn primary" type="submit">Rate it now</button><button class="btn" type="button" id="quickCancel">Cancel</button></div>
@@ -1390,7 +1390,7 @@ document.getElementById("quickForm").addEventListener("submit", async e => {
   const ptype = $("#q-type").value, commercial = ptype === "nonresidential", isFlat = ptype === "flat";
   const PLAN_GUESS = {
     refurb: ["Refurbish", "none", "Internal works only, so no planning application. Building regulations apply to electrics, heating and structural work."],
-    bedroom: ["Extra bedroom inside", "none", "Rearranging rooms inside is not development, so no planning application. Building regulations apply (fire escape, ventilation)."],
+    bedroom: ["Extra bedroom inside (e.g. 1-bed flat to 2-bed)", "none", "Rearranging rooms inside is not development, so no planning application. Building regulations apply (fire escape, ventilation)."],
     garage: ["Convert the garage", "pd", "For a house, converting an attached garage internally is usually permitted development, unless a condition on the original permission removes it."],
     rear: ["Rear extension", "pd", "For a house: single storey up to 3m deep (attached) or 4m (detached) without an application, or up to 6m or 8m with prior approval."],
     loft: ["Loft conversion", "pd", "For a house: up to 40 m³ extra (terraced) or 50 m³ (semi or detached), no dormer facing the road, not in a conservation area."],
@@ -1401,6 +1401,7 @@ document.getElementById("quickForm").addEventListener("submit", async e => {
   const pg = PLAN_GUESS[$("#q-plan").value] || PLAN_GUESS.refurb;
   let route = pg[1], reasons = [pg[2]];
   if (isFlat && (route === "pd")){ route = "full"; reasons = ["Flats and maisonettes don't have householder permitted development rights, so this needs planning permission (and the freeholder's consent)."]; }
+  if (isFlat && route === "none"){ reasons.push("In a flat, the lease usually needs the freeholder's written consent (a licence to alter) for internal changes, and every bedroom needs a window and a safe escape route that doesn't pass through the kitchen."); }
   reasons.push("This is a first guess from your quick check. The full appraisal checks the conservation area, Article 4 and any conditions on the property.");
   const now = new Date().toISOString();
   const inputs = Object.assign({}, DEFAULT_INPUTS, { purchasePrice: price, gdv, worksCost: num("#q-works"), monthlyRent: num("#q-rent") || DEFAULT_INPUTS.monthlyRent,
