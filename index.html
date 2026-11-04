@@ -317,6 +317,21 @@ ul.pchecks li{display:grid;grid-template-columns:18px 1fr;gap:6px}
 #fpView img{max-width:100%;max-height:80vh;display:block;margin:0 auto;background:#fff}
 @media (max-width:900px){.plans{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;margin-left:-4px;margin-right:-4px;padding-left:4px}.plan{flex:0 0 86%;scroll-snap-align:start}}
 .plan-top .badge{white-space:nowrap}
+.sketchbox{margin-top:16px}
+.sketchbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.sketch{display:flex;flex-wrap:wrap;gap:18px;margin-top:10px}
+.sketch figure{flex:1 1 300px;margin:0;min-width:0}
+.sketch figcaption{font-size:.82rem;font-weight:700;color:var(--muted);margin-bottom:4px}
+.sketch svg{width:100%;height:auto;display:block}
+.sketch svg .wall{fill:none;stroke:var(--ink);stroke-width:2.2}
+.sketch svg .lbl{fill:var(--ink);font-family:var(--body);font-size:11.5px}
+.sketch svg .dim{fill:var(--muted);font-family:var(--mono);font-size:9.5px}
+.sketch svg .win{stroke:var(--accent);stroke-width:7}
+.sketch svg .r-living{fill:var(--accent-soft)} .sketch svg .r-kitchen{fill:color-mix(in srgb,var(--accent) 22%,var(--card))}
+.sketch svg .r-bed{fill:var(--good-soft)} .sketch svg .r-wet{fill:color-mix(in srgb,#7a5bd6 16%,var(--card))}
+.sketch svg .r-circ{fill:var(--paper)} .sketch svg .r-store{fill:var(--warn-soft)} .sketch svg .r-commercial{fill:color-mix(in srgb,var(--muted) 18%,var(--card))}
+.sketch svg .r-new{stroke:var(--good);stroke-width:2.5;stroke-dasharray:6 4;fill:none}
+.sketchnotes{margin:8px 0 0;padding-left:18px;font-size:.84rem;display:grid;gap:3px}
 .mp-good{color:var(--good)} .mp-warn{color:var(--warn)} .mp-bad{color:var(--bad)}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -897,7 +912,7 @@ function planDetailHtml(real, p){
         ${pl.timescale || pl.fee ? `<p class="small muted" style="margin:0">${pl.timescale ? `Time: ${esc(pl.timescale)}. ` : ""}${pl.fee ? `Fees: ${esc(pl.fee)}.` : ""}</p>` : ""}
         ${pl.recommendLdc ? `<p class="small" style="margin:0"><b>Before you exchange:</b> apply for a Lawful Development Certificate to confirm this is permitted development. It costs about half a planning application and takes about 8 weeks.</p>` : ""}
       </div>
-    </div></div>`;
+    </div>${sketchHtml(real, p)}</div>`;
 }
 function plansPanelHtml(d){
   const real = (d && d.__real) || d;
@@ -959,6 +974,75 @@ document.addEventListener("click", e => {
 let planDelArmed = 0;
 function confirmPlanDelete(){ const now = Date.now(); if (now - planDelArmed < 4000) return true; planDelArmed = now; showBanner("Press Delete plan again within a few seconds to remove this plan."); return false; }
 
+/* ---------- Layout sketches ---------- */
+state.sketch = {};
+const ROOM_TYPES = ["living", "kitchen", "bed", "wet", "circ", "store", "commercial"];
+function wrapWords(text, maxChars){
+  const out = []; let cur = "";
+  String(text || "").split(/\s+/).forEach(w => { if (cur && (cur + " " + w).length > maxChars){ out.push(cur); cur = w; } else cur = (cur ? cur + " " : "") + w; });
+  if (cur) out.push(cur); return out;
+}
+function floorSvg(f){
+  const S = 52, pad = 6;
+  const W = Math.max(1, Number(f.w) || 1), D = Math.max(1, Number(f.d) || 1);
+  const vw = W * S + pad * 2, vh = D * S + pad * 2 + 18;
+  const parts = [`<svg viewBox="0 0 ${vw.toFixed(0)} ${vh.toFixed(0)}" role="img" aria-label="${esc(f.name || "Floor")} layout sketch">`];
+  const texts = [];
+  (f.rooms || []).forEach(r => {
+    const x = pad + (Number(r.x) || 0) * S, y = pad + (Number(r.y) || 0) * S, w = (Number(r.w) || 0) * S, h = (Number(r.h) || 0) * S;
+    if (w <= 0 || h <= 0) return;
+    const t = ROOM_TYPES.includes(r.t) ? r.t : "circ";
+    parts.push(`<rect class="r-${t}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}"/>`);
+    parts.push(`<rect class="wall" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}"/>`);
+    if (r.isNew) parts.push(`<rect class="r-new" x="${(x + 4).toFixed(1)}" y="${(y + 4).toFixed(1)}" width="${Math.max(0, w - 8).toFixed(1)}" height="${Math.max(0, h - 8).toFixed(1)}"/>`);
+    (r.win || []).forEach(s => {
+      if (s === "N") parts.push(`<line class="win" x1="${(x + w * .25).toFixed(1)}" y1="${y.toFixed(1)}" x2="${(x + w * .75).toFixed(1)}" y2="${y.toFixed(1)}"/>`);
+      if (s === "S") parts.push(`<line class="win" x1="${(x + w * .25).toFixed(1)}" y1="${(y + h).toFixed(1)}" x2="${(x + w * .75).toFixed(1)}" y2="${(y + h).toFixed(1)}"/>`);
+      if (s === "W") parts.push(`<line class="win" x1="${x.toFixed(1)}" y1="${(y + h * .3).toFixed(1)}" x2="${x.toFixed(1)}" y2="${(y + h * .7).toFixed(1)}"/>`);
+      if (s === "E") parts.push(`<line class="win" x1="${(x + w).toFixed(1)}" y1="${(y + h * .3).toFixed(1)}" x2="${(x + w).toFixed(1)}" y2="${(y + h * .7).toFixed(1)}"/>`);
+    });
+    const area = (Number(r.w) || 0) * (Number(r.h) || 0);
+    const name = r.n || "";
+    const dimFull = `${(+r.w).toFixed(1)} × ${(+r.h).toFixed(1)} m${area >= 4 ? ` · ${area.toFixed(0)} m²` : ""}`;
+    const dimShort = `${(+r.w).toFixed(1)}×${(+r.h).toFixed(1)}`;
+    const dim = dimFull.length * 5.9 < w - 8 ? dimFull : dimShort.length * 5.9 < w - 6 ? dimShort : "";
+    const lines = wrapWords(name, Math.max(4, Math.floor((w - 8) / 6.6))).slice(0, Math.max(1, Math.floor((h - (dim ? 26 : 12)) / 14)));
+    const block = lines.length * 14 + (dim && h > 34 ? 14 : 0);
+    const top = y + h / 2 - block / 2 + 11;
+    lines.forEach((l, i) => texts.push(`<text class="lbl" x="${(x + w / 2).toFixed(1)}" y="${(top + i * 14).toFixed(1)}" text-anchor="middle">${esc(l)}</text>`));
+    if (dim && h > 34) texts.push(`<text class="dim" x="${(x + w / 2).toFixed(1)}" y="${(top + lines.length * 14).toFixed(1)}" text-anchor="middle">${dim}</text>`);
+  });
+  parts.push(...texts);
+  if (f.front) parts.push(`<text class="dim" x="${pad}" y="${(vh - 4).toFixed(0)}">${esc(f.front)}</text>`);
+  parts.push(`</svg>`);
+  return parts.join("");
+}
+function drawingHtml(dr){
+  if (!dr || !(dr.floors || []).length) return "";
+  return `<div class="sketch">${dr.floors.map(f => `<figure><figcaption>${esc(f.name || "Floor")}</figcaption>${floorSvg(f)}</figure>`).join("")}</div>
+    ${(dr.notes || []).length ? `<ul class="sketchnotes">${dr.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}`;
+}
+function sketchHtml(real, p){
+  const after = p && p.drawing, before = real.drawingBefore;
+  if (!after && !before) return `<div class="sketchbox"><h3>Layout sketch</h3><p class="small muted" style="margin:0">No sketch yet. Add a floor plan image and press Re-appraise, and Claude will draw this plan room by room.</p></div>`;
+  let mode = state.sketch[real.id] || (after ? "after" : "before");
+  if (mode === "after" && !after) mode = "before"; if (mode === "before" && !before) mode = "after";
+  const dr = mode === "after" ? after : before;
+  const basis = dr && dr.basis ? dr.basis : "";
+  return `<div class="sketchbox">
+    <div class="sketchbar"><h3 style="margin:0">Layout sketch: ${mode === "after" ? esc(p.name || "this plan") : "as it is today"}</h3>
+      <div class="filter" role="group" aria-label="Show layout">${before ? `<button type="button" class="chip" data-sketch="before" aria-pressed="${mode === "before"}">Today</button>` : ""}${after ? `<button type="button" class="chip" data-sketch="after" aria-pressed="${mode === "after"}">After works</button>` : ""}</div></div>
+    ${drawingHtml(dr)}
+    <p class="small muted" style="margin:6px 0 0">Blue bars are windows${mode === "after" ? "; dashed green outlines are new or changed rooms" : ""}. ${basis ? esc(basis) + ". " : ""}A sketch for deciding, not a measured or architect's drawing.</p>
+  </div>`;
+}
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-sketch]"); if (!t) return;
+  const v = currentDeal(); if (!v) return; const real = v.__real || v;
+  state.sketch[real.id] = t.dataset.sketch;
+  const box = t.closest(".sketchbox"); if (box) box.outerHTML = sketchHtml(real, plansOf(real)[activePlanIndex(real)]);
+});
+
 /* ---------- Floor plans ---------- */
 async function loadFloorplans(id){
   if (!state.db || id === "example") { state.fp[id] = []; return; }
@@ -983,7 +1067,7 @@ function layoutTabHtml(d){
       ${state.readOnly || real.example ? "" : `<div class="rowbtns" style="margin-top:0"><label class="btn" for="fpFile" style="cursor:pointer">Add floor plan images</label><input type="file" id="fpFile" accept="image/*" multiple hidden><span class="save-state" id="fpState"></span></div>
       <p class="small muted" style="margin:0">After adding plans, press Re-appraise so Claude redoes the plans from them.</p>`}
     </div>
-    <div class="stack"><h2>Layout today</h2><div class="prose small">${esc(real.layout || "Not reviewed yet.")}</div>
+    <div class="stack"><h2>Layout today</h2>${real.drawingBefore ? drawingHtml(real.drawingBefore) : ""}<div class="prose small">${esc(real.layout || "Not reviewed yet.")}</div>
       ${ideas}
       <h3>Key risks</h3>${(real.risks || []).length ? `<ul class="clean small">${real.risks.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : `<p class="muted small">None recorded.</p>`}
     </div></div>`;
@@ -1414,13 +1498,13 @@ document.getElementById("quickForm").addEventListener("submit", async e => {
   const deal = { address: $("#q-address").value.trim(), url, status: "Screening", created: now.slice(0, 10), updated: now.slice(0, 10), notes: "",
     facts: { asking: price, type: isFlat ? "Flat" : commercial ? "Commercial" : "House" }, inputs, schemes,
     verdict: { level: "", headline: "Quick check from your figures", text: "These numbers are the ones you entered, checked against your rules. Claude's full appraisal (comparables, planning, risks, works and exit options) replaces them in the next hourly run." },
-    appraisal: { state: url ? "queued" : "done", requested: now, urgent: true, note: "Quick check entered by hand: price " + price + ", value after works " + gdv + ", works " + inputs.worksCost + ", rent " + inputs.monthlyRent + ". Treat these as the user's starting assumptions." } };
+    appraisal: { state: "queued", requested: now, urgent: true, note: "Quick check entered by hand: price " + price + ", value after works " + gdv + ", works " + inputs.worksCost + ", rent " + inputs.monthlyRent + ". Treat these as the user's starting assumptions." + (url ? "" : " No listing link was given: find the listing by searching for the address; if you can't find it, work from any uploaded floor plans, the address and these figures.") } };
   try{
     await queueWrite(() => state.db.doc("deals/" + id).set(deal));
     $("#quickDlg").close(); $("#quickForm").reset(); $("#addUrls").value = "";
     if (!state.deals.find(x => x.id === id)) state.deals.unshift(Object.assign({ id }, JSON.parse(JSON.stringify(deal))));
     state.currentId = id; state.compare = false; state.tab = "layout"; state.filter = "All";
-    showBanner(url ? "Rated from your figures. The full appraisal comes in the next hourly run, ahead of anything else waiting." : "Rated from your figures. Add a listing link and press Re-appraise if you want Claude's full appraisal.");
+    showBanner("Rated from your figures. The full appraisal, with plans and layout sketches, comes in the next hourly run, ahead of anything else waiting." + (url ? "" : " Add the floor plan under Floor plans and layout to make it more accurate."));
     renderAll(); setTimeout(showDetailView, 0);
   }catch(err){ $("#quickErr").textContent = "Couldn't save just now. Try again."; }
 });
