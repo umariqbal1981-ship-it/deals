@@ -332,6 +332,11 @@ ul.pchecks li{display:grid;grid-template-columns:18px 1fr;gap:6px}
 .sketch svg .r-circ{fill:var(--paper)} .sketch svg .r-store{fill:var(--warn-soft)} .sketch svg .r-commercial{fill:color-mix(in srgb,var(--muted) 18%,var(--card))}
 .sketch svg .r-new{stroke:var(--good);stroke-width:2.5;stroke-dasharray:6 4;fill:none}
 .sketchnotes{margin:8px 0 0;padding-left:18px;font-size:.84rem;display:grid;gap:3px}
+.view3d{position:relative;width:100%;height:460px;margin-top:10px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--paper);touch-action:none}
+.view3d canvas{display:block;width:100%;height:100%}
+.view3d .v3msg{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:.9rem;text-align:center;padding:20px}
+.v3hint{position:absolute;left:10px;bottom:8px;font-size:.75rem;color:var(--muted);background:var(--card);padding:2px 8px;border-radius:999px;opacity:.9}
+@media (max-width:900px){.view3d{height:360px}}
 .mp-good{color:var(--good)} .mp-warn{color:var(--warn)} .mp-bad{color:var(--bad)}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -890,6 +895,66 @@ function ensureSchemes(real){
   }
   return real.schemes;
 }
+/* ---------- Space standards and light, worked out from the sketch ---------- */
+// Nationally Described Space Standard (2015): minimum floor area by bedrooms/people and storeys
+const NDSS = { "1b1p":[39,null,null], "1b2p":[50,58,null], "2b3p":[61,70,null], "2b4p":[70,79,null], "3b4p":[74,84,90], "3b5p":[86,93,99], "3b6p":[95,102,108], "4b5p":[90,97,103], "4b6p":[99,106,112], "4b7p":[108,115,121], "4b8p":[117,124,130], "5b6p":[103,110,116], "5b7p":[112,119,125], "5b8p":[121,128,134] };
+const HABITABLE = { living:1, kitchen:1, bed:1 };
+function standardsFor(real, p){
+  const dr = p && p.drawing; if (!dr || !(dr.floors || []).length) return null;
+  const out = [], units = new Map();
+  const unitOf = (f, r) => r.unit || f.unit || ((String(r.n || "").match(/flat\s*(\d+)/i) || String(f.name || "").match(/flat\s*(\d+)/i) || [])[1] ? "Flat " + ((String(r.n || "").match(/flat\s*(\d+)/i) || String(f.name || "").match(/flat\s*(\d+)/i))[1]) : "Home");
+  dr.floors.forEach((f, k) => {
+    const lvl = floorLevel(f, k), rooms = f.rooms || [];
+    const fa = +((String(f.name || "").match(/(\d+(?:\.\d+)?)\s*m²/) || [])[1]) || 0;
+    rooms.forEach(r => {
+      if (r.t === "commercial") return;
+      const w = +r.w || 0, h = +r.h || 0, a = w * h, un = unitOf(f, r);
+      if (units.has(un)) units.get(un).area += a;
+      if (!units.has(un)) units.set(un, { area: 0, floorArea: 0, floors: new Set(), counted: new Set(), beds: [] });
+      const U = units.get(un), fl = (String(f.name || "").match(/flat\s*(\d+)/i) || [])[1];
+      const floorIsUnit = fa && (!fl || "Flat " + fl === un);
+      if (floorIsUnit) { if (!U.counted.has(k)) { U.counted.add(k); U.floorArea += fa; } } else U.floorArea += a;
+      if (r.t !== "circ" && r.t !== "store") U.floors.add(k);
+      if (r.t === "bed") U.beds.push({ n: r.n || "Bedroom", a, min: Math.min(w, h) });
+      const nm = String(r.n || r.t).replace(/\s*·.*$/, "");
+      if (HABITABLE[r.t] && !(r.win || []).length) out.push({ ok: r.t === "kitchen" ? null : false, check: `Natural light: ${nm}`, detail: r.t === "kitchen"
+        ? "No window shown. Fine for a small galley kitchen off a lit living room, but a separate kitchen-diner needs a window."
+        : `No window shown${lvl < 0 ? " (below ground)" : ""}. Permitted development conversions (Class MA, G, M, AA and others) must give every habitable room adequate natural light, and councils refuse windowless bedrooms.` });
+      else if (HABITABLE[r.t] && lvl < 0) out.push({ ok: null, check: `Natural light: ${nm}`, detail: "Below ground. Councils usually want a lightwell or large glazed doors and may ask for a daylight report (BRE guide)." });
+    });
+  });
+  const many = units.size > 1, L = p.layout || {}, top = [];
+  units.forEach((U, un) => {
+    let doubles = 0, singles = 0;
+    const dbls = U.beds.filter(b => b.a >= 11.5), widest = dbls.length ? dbls.reduce((x, y) => y.min > x.min ? y : x) : null;
+    U.beds.forEach(b => {
+      const dbl = b.a >= 11.5, minW = dbl ? (b === widest ? 2.75 : 2.55) : 2.15;
+      if (b.a >= 7.5) dbl ? doubles++ : singles++;
+      const ok = b.a >= 7.5 && b.min >= minW, nm = String(b.n).replace(/\s*·.*$/, "");
+      top.push({ ok, check: `${nm}: ${b.a.toFixed(1)} m², ${b.min.toFixed(2)} m wide`, detail: b.a < 7.5
+        ? `Below the 7.5 m² single bedroom minimum (national space standard). Below 6.51 m² it can't even be let as an HMO room.`
+        : `${dbl ? "Double" : "Single"} bedroom: needs at least ${dbl ? "11.5" : "7.5"} m² and ${minW} m wide${ok ? ", so it meets it" : ", so it's too narrow"}.` });
+    });
+    const nb = doubles + singles; if (!nb) return;
+    const ppl = doubles * 2 + singles, storeys = U.floors.size;
+    const row = NDSS[`${Math.min(nb,5)}b${ppl}p`] || NDSS[`${Math.min(nb,5)}b${nb + 1}p`];
+    const need = row ? (row[Math.min(storeys, 3) - 1] || row.filter(Boolean).pop()) : null;
+    const gia = (!many && +L.sqmAfter) || U.floorArea || U.area;
+    if (need) top.unshift({ ok: gia >= need, check: `${many ? un : "Whole home"}: about ${Math.round(gia)} m² for ${nb} bed, ${ppl} ${ppl === 1 ? "person" : "people"}${storeys > 1 ? `, ${storeys} storeys` : ""}`, detail: `National space standard minimum is ${need} m²${gia >= need ? "" : `, so it's about ${Math.round(need - gia)} m² short. Plan it for fewer people (a single bedroom) or expect a refusal`}. Also needs ${[0,1.5,2,2.5,3,3.5][Math.min(nb,5)]} m² of built-in storage and 2.3 m ceilings over at least 75% of the floor.` });
+  });
+  const all = top.concat(out);
+  return all.length ? all : null;
+}
+function standardsHtml(real, p){
+  const s = standardsFor(real, p); const pl = (p && p.planning) || {};
+  const a4 = pl.article4;
+  if (!s && !a4) return "";
+  const li = c => `<li>${c.ok === true ? '<span class="ok">✓</span>' : c.ok === false ? '<span class="no">✗</span>' : '<span class="na">?</span>'}<span><b>${esc(c.check)}</b>${c.detail ? ` · ${esc(c.detail)}` : ""}</span></li>`;
+  return `<div class="sketchbox"><h3>Room sizes, light and Article 4</h3>
+    ${a4 ? `<ul class="pchecks small">${li({ ok: a4.applies === true ? false : a4.applies === false ? true : null, check: a4.applies === true ? "Article 4 direction applies" : a4.applies === false ? "No Article 4 direction found" : "Article 4 not confirmed", detail: [a4.detail, a4.removes ? "Removes: " + a4.removes : ""].filter(Boolean).join(". ") })}</ul>` : ""}
+    ${s ? `<ul class="pchecks small">${s.map(li).join("")}</ul><p class="small muted" style="margin:4px 0 0">Worked out from the sketch's room sizes, so treat it as a guide. Some councils set higher local standards (for example for HMOs or in the London Plan); the appraisal notes these under Planning.</p>` : ""}
+  </div>`;
+}
 function planDetailHtml(real, p){
   if (!p) return "";
   const pl = p.planning || {}, rt = routeOf(p), L = p.layout || {};
@@ -912,7 +977,7 @@ function planDetailHtml(real, p){
         ${pl.timescale || pl.fee ? `<p class="small muted" style="margin:0">${pl.timescale ? `Time: ${esc(pl.timescale)}. ` : ""}${pl.fee ? `Fees: ${esc(pl.fee)}.` : ""}</p>` : ""}
         ${pl.recommendLdc ? `<p class="small" style="margin:0"><b>Before you exchange:</b> apply for a Lawful Development Certificate to confirm this is permitted development. It costs about half a planning application and takes about 8 weeks.</p>` : ""}
       </div>
-    </div>${sketchHtml(real, p)}</div>`;
+    </div>${sketchHtml(real, p)}${standardsHtml(real, p)}</div>`;
 }
 function plansPanelHtml(d){
   const real = (d && d.__real) || d;
@@ -1031,9 +1096,10 @@ function sketchHtml(real, p){
   const basis = dr && dr.basis ? dr.basis : "";
   return `<div class="sketchbox">
     <div class="sketchbar"><h3 style="margin:0">Layout sketch: ${mode === "after" ? esc(p.name || "this plan") : "as it is today"}</h3>
-      <div class="filter" role="group" aria-label="Show layout">${before ? `<button type="button" class="chip" data-sketch="before" aria-pressed="${mode === "before"}">Today</button>` : ""}${after ? `<button type="button" class="chip" data-sketch="after" aria-pressed="${mode === "after"}">After works</button>` : ""}</div></div>
-    ${drawingHtml(dr)}
-    <p class="small muted" style="margin:6px 0 0">Blue bars are windows${mode === "after" ? "; dashed green outlines are new or changed rooms" : ""}. ${basis ? esc(basis) + ". " : ""}A sketch for deciding, not a measured or architect's drawing.</p>
+      <div class="filter" role="group" aria-label="Show layout">${before ? `<button type="button" class="chip" data-sketch="before" aria-pressed="${mode === "before"}">Today</button>` : ""}${after ? `<button type="button" class="chip" data-sketch="after" aria-pressed="${mode === "after"}">After works</button>` : ""}
+        <button type="button" class="chip" data-v3="off" aria-pressed="${!state.view3d[real.id]}">Plan</button><button type="button" class="chip" data-v3="on" aria-pressed="${!!state.view3d[real.id]}">3D</button></div></div>
+    ${state.view3d[real.id] ? `<div class="view3d" data-pending="1" role="img" aria-label="3D view of the layout"></div>${(dr.notes || []).length ? `<ul class="sketchnotes">${dr.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}` : drawingHtml(dr)}
+    <p class="small muted" style="margin:6px 0 0">${state.view3d[real.id] ? `The floor of each level is the real floor plan where Claude has it; walls are cut away at about 1.2 m so you can see in, with ${mode === "after" ? "new walls in green and " : ""}windows in blue` : `Blue bars are windows${mode === "after" ? "; dashed green outlines are new or changed rooms" : ""}`}. ${basis ? esc(basis) + ". " : ""}A sketch for deciding, not a measured or architect's drawing.</p>
   </div>`;
 }
 document.addEventListener("click", e => {
@@ -1042,6 +1108,164 @@ document.addEventListener("click", e => {
   state.sketch[real.id] = t.dataset.sketch;
   const box = t.closest(".sketchbox"); if (box) box.outerHTML = sketchHtml(real, plansOf(real)[activePlanIndex(real)]);
 });
+
+/* ---------- 3D view on the real floor plans ---------- */
+state.view3d = {};
+let v3 = null; // { renderer, raf, ro }
+const LIB_THREE = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
+const LIB_ORBIT = "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js";
+function loadScript(url){ return new Promise((res, rej) => { if ([...document.scripts].some(s => s.src === url)) return res(); const s = document.createElement("script"); s.src = url; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); }
+async function ensureThree(){ if (!window.THREE) await loadScript(LIB_THREE); if (!window.THREE.OrbitControls) await loadScript(LIB_ORBIT); }
+function floorLevel(f, k){
+  const n = String(f.name || "").toLowerCase();
+  if (f.level != null) return Number(f.level);
+  if (/basement|lower ground|cellar/.test(n)) return -1;
+  if (/loft|attic|third/.test(n)) return 3;
+  if (/second/.test(n)) return 2;
+  if (/first|upper/.test(n)) return 1;
+  if (/ground/.test(n)) return 0;
+  return k;
+}
+function imageFor(real, dr, f, k){
+  if (f.image) return f.image;
+  const b = real.drawingBefore && real.drawingBefore.floors && real.drawingBefore.floors[k];
+  if (b && b.image && Math.abs((+b.w) - (+f.w)) < 0.05 && Math.abs((+b.d) - (+f.d)) < 0.05) return b.image;
+  return null;
+}
+function loadImg(src){ return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; }); }
+async function floorTexture(real, f, img){
+  const THREE = window.THREE, W = Math.max(1, +f.w), D = Math.max(1, +f.d);
+  const pxPerM = 120, cw = Math.round(W * pxPerM), ch = Math.round(D * pxPerM);
+  const c = document.createElement("canvas"); c.width = Math.min(2048, cw); c.height = Math.min(2048, ch);
+  const g = c.getContext("2d"); g.fillStyle = "#ffffff"; g.fillRect(0, 0, c.width, c.height);
+  let usedPlan = false;
+  if (img){
+    const fp = (state.fp[real.id] || []).find(x => x.id === img.fp);
+    if (fp){
+      try{
+        const im = await loadImg(`data:${fp.mime || "image/jpeg"};base64,${fp.data_b64}`);
+        const [x0, y0, x1, y1] = img.crop || [0, 0, im.naturalWidth, im.naturalHeight];
+        const rot = ((Number(img.rotate) || 0) % 360 + 360) % 360; // degrees clockwise so the street side ends up at the top
+        const side = rot % 180 !== 0, dw = side ? c.height : c.width, dh = side ? c.width : c.height;
+        g.save(); g.translate(c.width / 2, c.height / 2); g.rotate(rot * Math.PI / 180);
+        g.drawImage(im, x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0), -dw / 2, -dh / 2, dw, dh); g.restore();
+        usedPlan = true;
+      }catch(_){}
+    }
+  }
+  if (!usedPlan){ // fall back to the traced room layout, drawn flat
+    const sx = c.width / W, sy = c.height / D;
+    const col = { living: "#dce9f4", kitchen: "#c6dbee", bed: "#dcefe2", wet: "#e4def4", circ: "#f2f3f0", store: "#efe7d6", commercial: "#e2e4e6" };
+    (f.rooms || []).forEach(r => { g.fillStyle = col[r.t] || "#f2f3f0"; g.fillRect(r.x * sx, r.y * sy, r.w * sx, r.h * sy); g.strokeStyle = "#1b232c"; g.lineWidth = 3; g.strokeRect(r.x * sx, r.y * sy, r.w * sx, r.h * sy); });
+  }
+  const tex = new THREE.CanvasTexture(c); tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter; tex.anisotropy = 8;
+  return { tex, usedPlan };
+}
+function labelSprite(text, sub){
+  const THREE = window.THREE, c = document.createElement("canvas"); c.width = 512; c.height = sub ? 150 : 100;
+  const g = c.getContext("2d"); g.fillStyle = "rgba(255,255,255,.88)"; g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = "#1b232c"; g.font = "600 40px Helvetica, Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillText(text.length > 26 ? text.slice(0, 25) + "…" : text, 256, sub ? 52 : 50);
+  if (sub){ g.fillStyle = "#5d6873"; g.font = "32px Helvetica, Arial, sans-serif"; g.fillText(sub, 256, 108); }
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true }));
+  s.scale.set(2.5, sub ? 0.74 : 0.49, 1); s.renderOrder = 10; return s;
+}
+function wallSegments(rooms){
+  const key = (a, b, c, d) => [a, b, c, d].map(v => Math.round(v * 20) / 20).join(",");
+  const segs = new Map();
+  rooms.forEach(r => {
+    const x = +r.x, y = +r.y, w = +r.w, h = +r.h; if (!(w > 0 && h > 0)) return;
+    [[x, y, x + w, y, "N"], [x, y + h, x + w, y + h, "S"], [x, y, x, y + h, "W"], [x + w, y, x + w, y + h, "E"]].forEach(([a, b, c, d, side]) => {
+      const k = key(a, b, c, d); const prev = segs.get(k);
+      const win = (r.win || []).includes(side);
+      segs.set(k, { a, b, c, d, isNew: (prev && prev.isNew) || !!r.isNew, win: (prev && prev.win) || win });
+    });
+  });
+  return [...segs.values()];
+}
+function stopView3d(){
+  if (!v3) return;
+  cancelAnimationFrame(v3.raf); try{ v3.ro && v3.ro.disconnect(); }catch(_){}
+  try{ v3.renderer.dispose(); v3.renderer.forceContextLoss && v3.renderer.forceContextLoss(); }catch(_){}
+  v3 = null;
+}
+async function renderView3d(el, real, dr){
+  stopView3d();
+  el.innerHTML = `<div class="v3msg">Loading 3D view…</div>`;
+  try{ await ensureThree(); }catch(_){ el.innerHTML = `<div class="v3msg">The 3D viewer couldn't load. Check your connection and try again.</div>`; return; }
+  if (!state.fp[real.id]) await loadFloorplans(real.id);
+  const THREE = window.THREE;
+  const W = el.clientWidth || 600, H = el.clientHeight || 420;
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); renderer.setSize(W, H);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(40, W / H, 0.1, 500);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.55); sun.position.set(-8, 14, -10); scene.add(sun);
+  const floors = (dr.floors || []).map((f, k) => ({ f, k, lvl: floorLevel(f, k) }));
+  let maxW = 1, maxD = 1, planCount = 0; const groups = [];
+  floors.sort((p, q) => q.lvl - p.lvl);
+  for (const { f, k, lvl } of floors){
+    const Wm = Math.max(1, +f.w), Dm = Math.max(1, +f.d); maxW = Math.max(maxW, Wm); maxD = Math.max(maxD, Dm);
+    const grp = new THREE.Group(); scene.add(grp); grp.userData.w = Wm; grp.userData.d = Dm; grp.userData.lvl = lvl; groups.push(grp);
+    const { tex, usedPlan } = await floorTexture(real, f, imageFor(real, dr, f, k)); if (usedPlan) planCount++;
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(Wm, Dm), new THREE.MeshBasicMaterial({ map: tex }));
+    floor.rotation.x = -Math.PI / 2; grp.add(floor);
+    const base = new THREE.Mesh(new THREE.BoxGeometry(Wm, 0.12, Dm), new THREE.MeshLambertMaterial({ color: 0x9aa6b0 }));
+    base.position.y = -0.07; grp.add(base);
+    const wallH = 1.25; // cut-away height so you can see in
+    wallSegments(f.rooms || []).forEach(s => {
+      const len = Math.hypot(s.c - s.a, s.d - s.b); if (len < 0.05) return;
+      const horiz = Math.abs(s.d - s.b) < 0.01;
+      const mat = new THREE.MeshLambertMaterial({ color: s.isNew ? 0x2f9a5a : 0xe8e6e1, transparent: true, opacity: s.isNew ? 0.85 : 0.9 });
+      const m = new THREE.Mesh(new THREE.BoxGeometry(horiz ? len : 0.1, wallH, horiz ? 0.1 : len), mat);
+      m.position.set((s.a + s.c) / 2 - Wm / 2, wallH / 2, (s.b + s.d) / 2 - Dm / 2); grp.add(m);
+      if (s.win){
+        const wm = new THREE.Mesh(new THREE.BoxGeometry(horiz ? len * 0.5 : 0.14, 0.55, horiz ? 0.14 : len * 0.5), new THREE.MeshLambertMaterial({ color: 0x4f8fc0, transparent: true, opacity: 0.75 }));
+        wm.position.set((s.a + s.c) / 2 - Wm / 2, wallH * 0.62, (s.b + s.d) / 2 - Dm / 2); grp.add(wm);
+      }
+    });
+    (f.rooms || []).forEach(r => {
+      if (!(+r.w > 0 && +r.h > 0) || (+r.w * +r.h) < 2.5) return;
+      const area = (+r.w * +r.h);
+      const sp = labelSprite(String(r.n || ""), r.t === "bed" || r.t === "living" || r.t === "kitchen" ? `${(+r.w).toFixed(1)} × ${(+r.h).toFixed(1)} m · ${area.toFixed(0)} m²` : "");
+      sp.position.set(+r.x + +r.w / 2 - Wm / 2, 1.7, +r.y + +r.h / 2 - Dm / 2); grp.add(sp);
+    });
+    const nm = labelSprite(String(f.name || "Floor"), ""); nm.scale.set(2.6, 0.5, 1); nm.position.set(0, 0.4, -Dm / 2 - 0.9); grp.add(nm);
+  }
+  const spacing = 2.2, narrow = (W / H) < 1;
+  // wide screens: floors side by side; phones: one behind the other
+  const total = groups.reduce((t, g) => t + (narrow ? g.userData.d : g.userData.w), 0) + spacing * (groups.length - 1);
+  let cx = -total / 2;
+  groups.forEach(g => { const sz = narrow ? g.userData.d : g.userData.w; if (narrow) g.position.z = cx + sz / 2; else g.position.x = cx + sz / 2; cx += sz + spacing; });
+  const spanX = narrow ? maxW : total, spanZ = narrow ? total : maxD;
+  const vf = THREE.MathUtils.degToRad(camera.fov), hf = 2 * Math.atan(Math.tan(vf / 2) * camera.aspect);
+  const dist = Math.max((spanX / 2 + 0.8) / Math.tan(hf / 2), (spanZ / 2 + 1.2) / Math.tan(vf / 2) * 0.8) * 1.6;
+  const dir = new THREE.Vector3(0.12, 0.78, -0.62).normalize();
+  camera.position.copy(dir.multiplyScalar(dist));
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.target.set(0, 0, 0); controls.enableDamping = true; controls.update();
+  el.innerHTML = ""; el.appendChild(renderer.domElement);
+  const hint = document.createElement("div"); hint.className = "v3hint";
+  hint.textContent = (planCount ? "Floors show the real floor plan" : "No floor plan image yet: floors show the traced layout") + " · drag to turn, pinch or scroll to zoom";
+  el.appendChild(hint);
+  const loop = () => { controls.update(); renderer.render(scene, camera); v3.raf = requestAnimationFrame(loop); };
+  v3 = { renderer, raf: 0, ro: null }; loop();
+  try{ v3.ro = new ResizeObserver(() => { const w = el.clientWidth, h = el.clientHeight; if (w && h){ renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); } }); v3.ro.observe(el); }catch(_){}
+}
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-v3]"); if (!t) return;
+  const v = currentDeal(); if (!v) return; const real = v.__real || v;
+  state.view3d[real.id] = t.dataset.v3 === "on";
+  const box = t.closest(".sketchbox"); if (box){ stopView3d(); box.outerHTML = sketchHtml(real, plansOf(real)[activePlanIndex(real)]); }
+});
+new MutationObserver(() => {
+  const el = document.querySelector(".view3d[data-pending]");
+  if (el){ el.removeAttribute("data-pending"); const v = currentDeal(); if (!v) return; const real = v.__real || v;
+    const p = plansOf(real)[activePlanIndex(real)]; const mode = state.sketch[real.id] || (p && p.drawing ? "after" : "before");
+    const dr = mode === "after" && p && p.drawing ? p.drawing : real.drawingBefore; if (dr) renderView3d(el, real, dr); }
+  else if (v3 && !document.querySelector(".view3d")) stopView3d();
+}).observe(document.getElementById("detail"), { childList: true, subtree: true });
 
 /* ---------- Floor plans ---------- */
 async function loadFloorplans(id){
