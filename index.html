@@ -293,6 +293,30 @@ body{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-ri
   body{font-size:11pt}
   a{color:inherit;text-decoration:none}
 }
+.plans{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px;margin-top:12px}
+.plan{text-align:left;border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:var(--paper);display:grid;gap:8px;align-content:start;color:var(--ink)}
+.plan:hover{border-color:var(--accent)}
+.plan.on{border-color:var(--accent);background:var(--card);box-shadow:0 0 0 2px var(--accent-soft)}
+.plan-top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.plan-name{font-family:var(--display);font-weight:700;font-size:1rem;line-height:1.25}
+.plan .rdot{justify-self:start;min-width:0}
+.plan-nums{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px}
+.plan-nums small{display:block;color:var(--muted);font-size:.72rem;line-height:1.2}
+.plan-nums b{font-family:var(--mono);font-weight:500;font-size:.95rem}
+.plandetail{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.plandetail h3{margin-bottom:6px}
+ul.pchecks{list-style:none;margin:6px 0;padding:0;display:grid;gap:4px}
+ul.pchecks li{display:grid;grid-template-columns:18px 1fr;gap:6px}
+.planfor{margin:0 2px;font-size:.88rem;color:var(--muted)}
+.planfor b{color:var(--ink)}
+.fps{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.fp{margin:0;border:1px solid var(--line);border-radius:6px;padding:6px;background:var(--paper)}
+.fp img{width:100%;height:140px;object-fit:contain;background:#fff;border-radius:4px;display:block}
+.fp figcaption{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:4px;overflow:hidden}
+#fpView{max-width:min(96vw,1100px);padding:10px}
+#fpView img{max-width:100%;max-height:80vh;display:block;margin:0 auto;background:#fff}
+@media (max-width:900px){.plans{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;margin-left:-4px;margin-right:-4px;padding-left:4px}.plan{flex:0 0 86%;scroll-snap-align:start}}
+.plan-top .badge{white-space:nowrap}
 .mp-good{color:var(--good)} .mp-warn{color:var(--warn)} .mp-bad{color:var(--bad)}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -369,12 +393,15 @@ body{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-ri
       <div class="field"><label for="q-works">Works budget (£)</label><input id="q-works" type="number" inputmode="decimal" required></div>
       <div class="field"><label for="q-rent">Rent after works (£/month)</label><input id="q-rent" type="number" inputmode="decimal"></div>
       <div class="field"><label for="q-months">Months of works</label><input id="q-months" type="number" inputmode="decimal" value="6"></div>
-      <div class="field"><label for="q-type">Type</label><select id="q-type"><option value="additional">House or flat</option><option value="nonresidential">Shop or commercial</option></select></div>
+      <div class="field"><label for="q-type">Type</label><select id="q-type"><option value="house">House</option><option value="flat">Flat or maisonette</option><option value="nonresidential">Shop or commercial</option></select></div>
+      <div class="field" style="grid-column:1/-1"><label for="q-plan">What would you add?</label><select id="q-plan"><option value="refurb">Refurbish only</option><option value="bedroom">Extra bedroom inside (reconfigure)</option><option value="garage">Convert the garage</option><option value="rear">Rear extension</option><option value="loft">Loft conversion</option><option value="hmo">Small HMO</option><option value="flats">Split into flats</option><option value="commercial">Shop to homes (Class MA)</option></select></div>
     </div>
     <p class="err small" id="quickErr" role="alert" style="color:var(--bad)"></p>
     <div class="head-actions"><button class="btn primary" type="submit">Rate it now</button><button class="btn" type="button" id="quickCancel">Cancel</button></div>
   </form>
 </dialog>
+
+<dialog id="fpView"><img id="fpViewImg" alt="Floor plan"><div class="head-actions" style="margin-top:8px"><button class="btn" type="button" id="fpViewClose">Close</button></div></dialog>
 
 <dialog id="rulesDlg">
   <form id="rulesForm">
@@ -430,7 +457,7 @@ const EXAMPLE = {
   inputs: Object.assign({}, DEFAULT_INPUTS), notes: ""
 };
 
-const state = { deals: [], currentId: null, filter: "All", tab: "overview", db: null, readOnly: false };
+const state = { deals: [], currentId: null, filter: "All", tab: "layout", db: null, readOnly: false };
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const gbp = (n, dp=0) => (n == null || !isFinite(n)) ? "–" : (n < 0 ? "−£" : "£") + Math.abs(n).toLocaleString("en-GB",{minimumFractionDigits:dp,maximumFractionDigits:dp});
@@ -545,19 +572,22 @@ function renderList(){
         <span class="row"><span>${esc(hostLabel(d.url))}</span><span class="pill p-wait">${failed ? "Needs your help" : d.inputs ? "Re-appraisal requested" : "Waiting for appraisal"}</span></span>
       </button>`;
     }
-    const r = appraise(d.inputs);
+    const bi = bestPlanIndex(d), bp = plansOf(d)[bi], vd = view(d, bi);
+    const r = appraise(vd.inputs);
     return `<button type="button" class="deal-item ${verdictClass(d)}" data-id="${esc(d.id)}" aria-current="${d.id===state.currentId}">
       <span class="addr">${esc(d.address || "Untitled deal")}</span>
       <span class="row"><span>Price <span class="num">${gbp(r.price)}</span></span>${statusPill(d.status)}</span>
       <span class="row"><span>Sell profit <span class="num">${gbp(r.sell.profit)}</span></span><span>Left in <span class="num">${gbp(Math.max(0,r.hold.leftIn))}</span></span></span>
-      ${(() => { const a = analyse(d.inputs); return `<span class="row"><span class="listchips"><span class="lc ${a.sellPass ? "b-pass" : "b-fail"}">Sell ${a.sellPass ? "✓" : "✗"}</span><span class="lc ${a.holdPass ? "b-pass" : "b-fail"}">Rent ${a.holdPass ? "✓" : "✗"}</span></span><span class="num">${pct(r.sell.margin)}</span></span>`; })()}
+      ${bp && !bp.fallback ? `<span class="row"><span>Best: ${esc(bp.name || "")}</span><span class="rdot ${routeOf(bp).cls}" style="min-width:0">${esc(routeOf(bp).label)}</span></span>` : ""}
+      ${(() => { const a = analyse(vd.inputs); return `<span class="row"><span class="listchips"><span class="lc ${a.sellPass ? "b-pass" : "b-fail"}">Sell ${a.sellPass ? "✓" : "✗"}</span><span class="lc ${a.holdPass ? "b-pass" : "b-fail"}">Rent ${a.holdPass ? "✓" : "✗"}</span></span><span class="num">${pct(r.sell.margin)}</span></span>`; })()}
     </button>`;
   }).join("");
 }
 
 function currentDeal(){
   const all = state.deals.length ? state.deals : [EXAMPLE];
-  return all.find(d => d.id === state.currentId) || all[0];
+  const d = all.find(d => d.id === state.currentId) || all[0];
+  return (typeof view === "function") ? view(d) : d;
 }
 
 function tilesHtml(d, r){
@@ -763,8 +793,8 @@ function exitsHtml(d){
 function compareHtml(){
   const deals = state.deals.filter(d => d.inputs);
   if (!deals.length) return `<div class="panel empty">No appraised deals to compare yet.</div>`;
-  const rows = deals.map(d => { const a = analyse(d.inputs), r = a.r;
-    return `<tr><td><button type="button" class="chip" data-id="${esc(d.id)}">${esc(d.address || d.id)}</button><div class="small muted">${esc(d.status || "Screening")}</div></td>
+  const rows = deals.map(d0 => { const bi = bestPlanIndex(d0), bp = plansOf(d0)[bi], d = view(d0, bi); const a = analyse(d.inputs), r = a.r;
+    return `<tr><td><button type="button" class="chip" data-id="${esc(d.id)}">${esc(d.address || d.id)}</button><div class="small muted">${esc(d.status || "Screening")}${bp ? ` · best: ${esc(bp.name || "")} (${esc(routeOf(bp).label)})` : ""}</div></td>
       <td class="r num">${gbp(r.price)}</td><td class="r num">${gbp(maxOffer(d.inputs))}</td><td class="r num">${gbp(r.i.gdv)}</td>
       <td class="r num">${gbp(r.sell.profit)}</td><td class="r num">${pct(r.sell.margin)}</td><td class="r num">${pct(a.annualised)}</td>
       <td class="r num">${gbp(r.hold.leftIn)}</td><td class="r num">${gbp(r.hold.cashflow/12)}</td>
@@ -772,6 +802,242 @@ function compareHtml(){
   return `<div class="panel"><div class="head"><h2>All deals side by side</h2><button class="btn" type="button" id="btnCloseCompare">Back to the deal</button></div>
     <div class="tablewrap" style="margin-top:12px"><table class="compare stackable"><thead><tr><th>Deal</th><th class="r">Price</th><th class="r">Max offer</th><th class="r">Value after</th><th class="r">Profit if sold</th><th class="r">On cost</th><th class="r">Per year</th><th class="r">Left in</th><th class="r">Cash flow/m</th><th>Your rules</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
+
+/* ---------- Plans: value-add schemes ---------- */
+const PLAN_KEYS = ["worksCost", "gdv", "monthlyRent", "monthsWorks", "profFees"];
+const ROUTES = {
+  none: { label: "No planning needed", cls: "r-green", certainty: 1 },
+  pd: { label: "Permitted development", cls: "r-green", certainty: 0.95 },
+  approved: { label: "Already approved", cls: "r-green", certainty: 0.95 },
+  prior_approval: { label: "Prior approval needed", cls: "r-amber", certainty: 0.8 },
+  full: { label: "Needs planning permission", cls: "r-red", certainty: 0.55 },
+  lbc: { label: "Listed building consent", cls: "r-red", certainty: 0.5 },
+  unknown: { label: "Planning not checked", cls: "r-unknown", certainty: 0.7 }
+};
+state.plan = {}; state.fp = {};
+const routeOf = p => ROUTES[(p && p.planning && p.planning.route) || "unknown"] || ROUTES.unknown;
+function plansOf(d){
+  if (!d) return [];
+  if (Array.isArray(d.schemes) && d.schemes.length) return d.schemes;
+  if (!d.inputs) return [];
+  return [{ id: "base", name: "Plan from the first appraisal", summary: "", overrides: {}, fallback: true, planning: { route: "unknown" } }]
+    .concat((d.scenarios || []).map((s, k) => ({ id: "sc" + k, name: s.name, summary: s.note, overrides: s.overrides || {}, fallback: true, planning: { route: "unknown" } })));
+}
+function planInputs(d, p){
+  if (!d.inputs) return undefined;
+  const ov = {}; PLAN_KEYS.forEach(k => { if (p && p.overrides && p.overrides[k] != null && p.overrides[k] !== "") ov[k] = p.overrides[k]; });
+  return Object.assign({}, DEFAULT_INPUTS, d.inputs, ov);
+}
+function planStats(d, p){
+  const inp = planInputs(d, p); const a = analyse(inp);
+  a.score = ((a.sellPass || a.holdPass) ? 1e12 : 0) + a.r.sell.profit * routeOf(p).certainty;
+  a.maxOffer = maxOffer(Object.assign({}, inp, { targetMarginPct: R().minMarginPct || 20 }));
+  return a;
+}
+function bestPlanIndex(d){
+  const ps = plansOf(d); let best = 0, bs = -Infinity;
+  ps.forEach((p, k) => { const s = planStats(d, p).score; if (s > bs){ bs = s; best = k; } });
+  return best;
+}
+function activePlanIndex(d){
+  const ps = plansOf(d), k = state.plan[d.id];
+  return (k != null && k < ps.length) ? k : bestPlanIndex(d);
+}
+function applyInputs(t, p, v){
+  t.inputs = Object.assign({}, t.inputs || {});
+  if (p) p.overrides = Object.assign({}, p.overrides || {});
+  Object.keys(v || {}).forEach(k => { if (p && !p.fallback && PLAN_KEYS.includes(k)) p.overrides[k] = v[k]; else t.inputs[k] = v[k]; });
+}
+function view(d, idx){
+  if (!d || d.example) return d;
+  const ps = plansOf(d); if (!ps.length) return d;
+  const p = ps[idx != null ? idx : activePlanIndex(d)];
+  return new Proxy(d, {
+    get(t, key){
+      if (key === "inputs") return planInputs(t, p);
+      if (key === "worksItems") return p.fallback ? t.worksItems : (p.worksItems || []);
+      if (key === "__plan") return p;
+      if (key === "__real") return t;
+      return t[key];
+    },
+    set(t, key, v){
+      if (key === "inputs") applyInputs(t, p, v);
+      else if (key === "worksItems"){ if (p.fallback) t.worksItems = v; else p.worksItems = v; }
+      else t[key] = v;
+      return true;
+    }
+  });
+}
+function ensureSchemes(real){
+  if (!Array.isArray(real.schemes) || !real.schemes.length){
+    real.schemes = plansOf(real).map(p => ({ id: p.id, name: p.name, summary: p.summary || "", overrides: Object.assign({}, p.overrides || {}),
+      planning: p.planning || { route: "unknown" }, worksItems: p.id === "base" ? (real.worksItems || []) : [] }));
+  }
+  return real.schemes;
+}
+function planDetailHtml(real, p){
+  if (!p) return "";
+  const pl = p.planning || {}, rt = routeOf(p), L = p.layout || {};
+  const checks = (pl.checks || []).map(c => `<li>${c.ok === true ? '<span class="ok">✓</span>' : c.ok === false ? '<span class="no">✗</span>' : '<span class="na">?</span>'}<span><b>${esc(c.check)}</b>${c.detail ? ` · ${esc(c.detail)}` : ""}</span></li>`).join("");
+  const changes = (L.changes || []).map(x => `<li>${esc(x)}</li>`).join("");
+  const canEdit = !state.readOnly && !p.fallback;
+  return `<div class="plandetail">
+    <div class="head"><h3 style="margin:0">${esc(p.name || "Plan")}</h3>
+      ${canEdit ? `<span class="head-actions"><button class="btn" type="button" data-planrename>Rename</button>${plansOf(real).length > 1 ? `<button class="btn danger" type="button" data-plandel>Delete plan</button>` : ""}</span>` : ""}</div>
+    ${p.summary ? `<p class="small" style="margin:4px 0 10px">${esc(p.summary)}</p>` : ""}
+    <div class="grid2">
+      <div class="stack"><h3>What changes</h3>
+        ${changes ? `<ul class="clean small">${changes}</ul>` : `<p class="small muted">${p.fallback ? "This plan comes from the first appraisal. Press Re-appraise to get room-by-room plans with planning checks." : "Not described yet."}</p>`}
+        ${p.valueEvidence ? `<p class="small" style="margin:0"><b>Value evidence:</b> ${esc(p.valueEvidence)}</p>` : ""}
+        ${p.risk ? `<p class="small" style="margin:0"><b>Risk:</b> ${esc(p.risk)}</p>` : ""}
+      </div>
+      <div class="stack"><h3>Planning <span class="rdot ${rt.cls}">${esc(pl.label || rt.label)}</span></h3>
+        ${(pl.reasons || []).length ? `<ul class="clean small">${pl.reasons.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+        ${checks ? `<ul class="pchecks small">${checks}</ul>` : ""}
+        ${pl.timescale || pl.fee ? `<p class="small muted" style="margin:0">${pl.timescale ? `Time: ${esc(pl.timescale)}. ` : ""}${pl.fee ? `Fees: ${esc(pl.fee)}.` : ""}</p>` : ""}
+        ${pl.recommendLdc ? `<p class="small" style="margin:0"><b>Before you exchange:</b> apply for a Lawful Development Certificate to confirm this is permitted development. It costs about half a planning application and takes about 8 weeks.</p>` : ""}
+      </div>
+    </div></div>`;
+}
+function plansPanelHtml(d){
+  const real = (d && d.__real) || d;
+  if (!real || real.example) return "";
+  const ps = plansOf(real); if (!ps.length) return "";
+  const act = activePlanIndex(real), best = bestPlanIndex(real), f = real.facts || {};
+  const arrow = (a, b, u) => (a == null && b == null) ? "" : (b != null && b !== a ? `${a ?? "?"} → ${b}${u}` : `${a ?? b}${u}`);
+  const cards = ps.map((p, k) => {
+    const a = planStats(real, p), r = a.r, rt = routeOf(p), L = p.layout || {};
+    const specs = [arrow(L.bedsBefore ?? f.beds, L.bedsAfter, " bed"), arrow(L.bathsBefore ?? f.baths, L.bathsAfter, " bath"), arrow(L.sqmBefore ?? f.sqm, L.sqmAfter, " m²")].filter(Boolean).join(" · ");
+    return `<button type="button" class="plan ${k === act ? "on" : ""}" data-plan="${k}" aria-pressed="${k === act}">
+      <span class="plan-top"><span class="plan-name">${esc(p.name || ("Plan " + (k + 1)))}</span>${k === best ? `<span class="badge b-pass">Best plan</span>` : ""}</span>
+      <span class="rdot ${rt.cls}">${esc((p.planning && p.planning.label) || rt.label)}</span>
+      ${specs ? `<span class="small muted">${esc(specs)}</span>` : ""}
+      <span class="plan-nums">
+        <span><small>Works and fees</small><b>${gbp(r.works)}</b></span>
+        <span><small>Value after works</small><b>${gbp(Number(r.i.gdv))}</b></span>
+        <span><small>Profit if sold</small><b class="${r.sell.profit >= 0 ? "mp-good" : "mp-bad"}">${gbp(r.sell.profit)}</b></span>
+        <span><small>Margin on cost</small><b class="${marginCls(r.sell.margin)}">${pct(r.sell.margin)}</b></span>
+        <span><small>Return per year</small><b>${pct(a.annualised)}</b></span>
+        <span><small>Max offer at ${esc(R().minMarginPct)}%</small><b>${a.maxOffer > 0 ? gbp(a.maxOffer) : "–"}</b></span>
+        <span><small>Cash left in if rented</small><b>${gbp(r.hold.leftIn)}</b></span>
+        <span><small>Cash flow if rented</small><b>${gbp(r.hold.cashflow / 12)}/m</b></span>
+      </span>
+      <span class="listchips"><span class="lc ${a.sellPass ? "b-pass" : "b-fail"}">Sell ${a.sellPass ? "✓" : "✗"}</span><span class="lc ${a.holdPass ? "b-pass" : "b-fail"}">Rent ${a.holdPass ? "✓" : "✗"}</span></span>
+    </button>`;
+  }).join("");
+  const today = [f.beds != null ? `${f.beds} bed` : "", f.baths != null ? `${f.baths} bath` : "", f.sqm ? `${f.sqm} m²` : "", f.asking ? `asking ${gbp(Number(f.asking))}` : ""].filter(Boolean).join(" · ");
+  return `<div class="panel" id="plansPanel">
+    <div class="head"><div><h2>Plans for this property</h2><p class="small muted" style="margin:2px 0 0">What it could become once you add value${today ? `. Today: ${esc(today)}` : ""}. Tap a plan to see its numbers below.</p></div>
+      ${state.readOnly ? "" : `<div class="head-actions"><button class="btn" type="button" data-plancopy>Copy this plan</button></div>`}</div>
+    <div class="plans" role="group" aria-label="Plans">${cards}</div>
+    ${planDetailHtml(real, ps[act])}
+  </div>`;
+}
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-plan],[data-plancopy],[data-planrename],[data-plandel]"); if (!t) return;
+  const v = currentDeal(); if (!v || v.example) return; const real = v.__real || v;
+  if (t.dataset.plan != null){ state.plan[real.id] = Number(t.dataset.plan); state.offer = null; renderList(); renderDetail(); return; }
+  if (state.readOnly) return;
+  const act = activePlanIndex(real);
+  if (t.dataset.plancopy != null){
+    const sc = ensureSchemes(real), src = JSON.parse(JSON.stringify(sc[act]));
+    delete src.fallback; src.id = "p" + Date.now().toString(36); src.name = (src.name || "Plan") + " (my version)"; src.byUser = true; src.recommended = false;
+    sc.push(src); state.plan[real.id] = sc.length - 1;
+    saveFields(real.id, { schemes: sc }); renderList(); renderDetail(); return;
+  }
+  if (t.dataset.planrename != null){
+    const sc = ensureSchemes(real), p = sc[act];
+    const name = window.prompt("Name this plan", p.name || ""); if (!name) return;
+    p.name = name.trim().slice(0, 120); saveFields(real.id, { schemes: sc }); renderDetail(); return;
+  }
+  if (t.dataset.plandel != null){
+    if (!confirmPlanDelete()) return;
+    const sc = ensureSchemes(real); sc.splice(act, 1); delete state.plan[real.id];
+    saveFields(real.id, { schemes: sc }); renderList(); renderDetail(); return;
+  }
+});
+let planDelArmed = 0;
+function confirmPlanDelete(){ const now = Date.now(); if (now - planDelArmed < 4000) return true; planDelArmed = now; showBanner("Press Delete plan again within a few seconds to remove this plan."); return false; }
+
+/* ---------- Floor plans ---------- */
+async function loadFloorplans(id){
+  if (!state.db || id === "example") { state.fp[id] = []; return; }
+  state.fp[id] = state.fp[id] || null;
+  try{
+    const { data, error } = await SB.from("floorplans").select("id,name,mime,data_b64,created_at").eq("deal_id", id).order("created_at", { ascending: true });
+    if (error) throw error;
+    state.fp[id] = data || [];
+  }catch(_){ state.fp[id] = []; }
+  const v = currentDeal(); if (v && v.id === id){ const pane = document.getElementById("pane-layout"); if (pane) pane.innerHTML = layoutTabHtml(v); }
+}
+function layoutTabHtml(d){
+  const real = (d && d.__real) || d; const fps = state.fp[real.id];
+  if (fps === undefined && !real.example) loadFloorplans(real.id);
+  const imgs = (fps || []).map(f => `<figure class="fp"><button type="button" class="iconbtn" style="padding:0;width:100%" data-fpopen="${esc(f.id)}" aria-label="Open ${esc(f.name)}"><img alt="${esc(f.name)}" src="data:${esc(f.mime || "image/jpeg")};base64,${f.data_b64}"></button>
+      <figcaption class="small"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}</span>${state.readOnly ? "" : `<button class="iconbtn" type="button" data-fpdel="${esc(f.id)}" aria-label="Remove ${esc(f.name)}">✕</button>`}</figcaption></figure>`).join("");
+  const ideas = (!Array.isArray(real.schemes) || !real.schemes.length) && (real.valueAdd || []).length
+    ? `<h3>Ideas from the first appraisal</h3><ul class="clean small">${real.valueAdd.map(o => `<li><b>${esc(o.title)}</b> · ${esc(o.route || "")} · cost ${esc(o.cost || "–")} · value added ${esc(o.uplift || "–")}</li>`).join("")}</ul>` : "";
+  return `<div class="grid2">
+    <div class="stack"><h2>Floor plans</h2>
+      ${fps == null && !real.example ? `<p class="small muted">Loading floor plans…</p>` : imgs ? `<div class="fps">${imgs}</div>` : `<p class="small muted">No floor plans added yet. Add a screenshot or photo of the plan and Claude will use it to work out what can be added.</p>`}
+      ${state.readOnly || real.example ? "" : `<div class="rowbtns" style="margin-top:0"><label class="btn" for="fpFile" style="cursor:pointer">Add floor plan images</label><input type="file" id="fpFile" accept="image/*" multiple hidden><span class="save-state" id="fpState"></span></div>
+      <p class="small muted" style="margin:0">After adding plans, press Re-appraise so Claude redoes the plans from them.</p>`}
+    </div>
+    <div class="stack"><h2>Layout today</h2><div class="prose small">${esc(real.layout || "Not reviewed yet.")}</div>
+      ${ideas}
+      <h3>Key risks</h3>${(real.risks || []).length ? `<ul class="clean small">${real.risks.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : `<p class="muted small">None recorded.</p>`}
+    </div></div>`;
+}
+async function shrinkImage(file){
+  const url = URL.createObjectURL(file);
+  try{
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    let max = 1600, q = 0.8, out = "", w = 0, h = 0;
+    for (let tries = 0; tries < 7; tries++){
+      const s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      w = Math.max(1, Math.round(img.naturalWidth * s)); h = Math.max(1, Math.round(img.naturalHeight * s));
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, w, h); g.drawImage(img, 0, 0, w, h);
+      out = c.toDataURL("image/jpeg", q).split(",")[1] || "";
+      if (out.length <= 560000) break;
+      max = Math.round(max * 0.8); q = Math.max(0.5, q - 0.1);
+    }
+    return { b64: out, w, h };
+  } finally { URL.revokeObjectURL(url); }
+}
+document.addEventListener("change", async e => {
+  if (e.target.id !== "fpFile") return;
+  const v = currentDeal(); if (!v || v.example || !state.db) return; const id = v.id;
+  const files = [...e.target.files].filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|webp|heic|heif|gif)$/i.test(f.name));
+  if (!files.length){ showBanner("Choose an image file of the floor plan (a photo or screenshot)."); return; }
+  const st = $("#fpState"); let done = 0;
+  for (const file of files){
+    if (st) st.textContent = `Adding ${done + 1} of ${files.length}…`;
+    try{
+      const { b64, w, h } = await shrinkImage(file);
+      if (!b64 || b64.length > 600000) throw new Error("too big");
+      const { error } = await SB.from("floorplans").insert({ deal_id: id, name: file.name || "Floor plan", mime: "image/jpeg", width: w, height: h, data_b64: b64 });
+      if (error) throw error; done++;
+    }catch(_){ showBanner(`Couldn't add ${file.name || "that image"}. Try a smaller screenshot.`); }
+  }
+  delete state.fp[id]; await loadFloorplans(id);
+  const s2 = $("#fpState"); if (s2) s2.textContent = done ? `Added ${done}` : "";
+  if (done) showBanner(`Added ${done} floor plan image${done > 1 ? "s" : ""}. Press Re-appraise to have Claude redo the plans from ${done > 1 ? "them" : "it"}.`);
+});
+let fpDelArmed = "";
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-fpopen],[data-fpdel],#fpViewClose"); if (!t) return;
+  if (t.id === "fpViewClose"){ $("#fpView").close(); return; }
+  const v = currentDeal(); if (!v) return; const list = state.fp[v.id] || [];
+  if (t.dataset.fpopen){ const f = list.find(x => x.id === t.dataset.fpopen); if (!f) return; $("#fpViewImg").src = `data:${f.mime || "image/jpeg"};base64,${f.data_b64}`; try{ $("#fpView").showModal(); }catch(_){ $("#fpView").setAttribute("open", ""); } return; }
+  if (t.dataset.fpdel && !state.readOnly){
+    if (fpDelArmed !== t.dataset.fpdel){ fpDelArmed = t.dataset.fpdel; showBanner("Press ✕ again to remove this floor plan."); setTimeout(() => { fpDelArmed = ""; }, 4000); return; }
+    fpDelArmed = "";
+    const { error } = await SB.from("floorplans").delete().eq("id", t.dataset.fpdel);
+    if (error){ showBanner("Couldn't remove that floor plan. Try again."); return; }
+    delete state.fp[v.id]; loadFloorplans(v.id);
+  }
+});
 
 /* ---------- Profit-margin sliders ---------- */
 const LADDER = [10, 15, 20, 25, 30];
@@ -934,7 +1200,7 @@ function numbersHtml(d){
   const dis = (state.readOnly || d.example) ? "disabled" : "";
   const form = FIELDS.map(([title, fields]) => `<fieldset><legend>${esc(title)}</legend><div class="form">${fields.map(([k,label,type,opts]) => (type||"").startsWith("select")
       ? `<div class="field${type==="select wide"?" wide":""}"><label for="in-${k}">${esc(label)}</label><select id="in-${k}" data-key="${k}" ${dis}>${opts.map(([v,l])=>`<option value="${v}" ${i[k]===v?"selected":""}>${esc(l)}</option>`).join("")}</select></div>`
-      : `<div class="field"><label for="in-${k}">${esc(label)}</label><input id="in-${k}" data-key="${k}" type="number" step="any" inputmode="decimal" value="${esc(i[k])}" ${dis}></div>`).join("")}</div></fieldset>`).join("");
+      : `<div class="field"><label for="in-${k}">${esc(label)}${(d.__plan && !d.__plan.fallback && PLAN_KEYS.includes(k)) ? ` <span class="pill p-neutral">this plan</span>` : ""}</label><input id="in-${k}" data-key="${k}" type="number" step="any" inputmode="decimal" value="${esc(i[k])}" ${dis}></div>`).join("")}</div></fieldset>`).join("");
   return `<div class="grid2">
     <div class="stack"><div class="head"><h2>Assumptions</h2><span class="save-state" id="saveState"></span></div>${form}
       <p class="small muted">Stamp Duty uses England and Northern Ireland bands. Shops and other commercial buildings use the commercial rates, even if you plan to convert them to homes. Tax credit and rates are editable assumptions, so check them with your accountant. Personal rental profit tax rises from April 2027, and a sale soon after works may be taxed as trading income rather than capital gains.</p></div>
@@ -1006,7 +1272,9 @@ function renderDetail(){
   const facts = [f.type, f.beds!=null?`${f.beds} bed`:"", f.baths!=null?`${f.baths} bath`:"", f.sqm?`${f.sqm} m²`:"", f.tenure, f.epc?`EPC ${f.epc}`:"", d.council].filter(Boolean).map(x=>`<span>${esc(x)}</span>`).join("");
   const v = d.verdict || {};
   const dis = (state.readOnly || d.example) ? "disabled" : "";
-  const tabs = [["overview","Value-add and layout"],["exits","Exit options"],["risks","Risks and market"],["comps","Sold comparables"],["planning","Planning"],["numbers","Costs and returns"],["notes","Notes and sources"]];
+  const tabs = [["layout","Floor plans and layout"],["comps","Sold comparables"],["planning","Planning"],["risks","Risks and market"],["numbers","Costs and returns"],["notes","Notes and sources"]];
+  if (!tabs.some(([k]) => k === state.tab)) state.tab = "layout";
+  const ap = d.__plan;
   if (state.compare){ $("#detail").innerHTML = compareHtml(); return; }
   $("#detail").innerHTML = `
     <div class="panel">
@@ -1022,13 +1290,14 @@ function renderDetail(){
       </div>
       ${v.text?`<div class="verdict ${verdictClass(d)}"><strong>${esc(v.headline||"Verdict")}</strong>${esc(v.text)}</div>`:""}
     </div>
+    ${plansPanelHtml(d)}
+    ${ap ? `<p class="planfor">The numbers below are for <b>${esc(ap.name || "this plan")}</b>. Changes you make to works, value, rent or timing apply to this plan only.</p>` : ""}
     ${tilesHtml(d, r)}
     ${marginPanelHtml(d, r)}
     ${checkPanelHtml(d)}
     <div class="panel">
       <div class="tabs" role="tablist">${tabs.map(([k,l])=>`<button class="tab" role="tab" id="tab-${k}" aria-controls="pane-${k}" aria-selected="${state.tab===k}" data-tab="${k}" type="button">${l}</button>`).join("")}</div>
-      <div class="tabpanel" role="tabpanel" id="pane-overview" aria-labelledby="tab-overview" ${state.tab!=="overview"?"hidden":""}>${overviewHtml(d)}</div>
-      <div class="tabpanel" role="tabpanel" id="pane-exits" aria-labelledby="tab-exits" ${state.tab!=="exits"?"hidden":""}><h2 class="printonly">Exit options</h2>${exitsHtml(d)}</div>
+      <div class="tabpanel" role="tabpanel" id="pane-layout" aria-labelledby="tab-layout" ${state.tab!=="layout"?"hidden":""}>${layoutTabHtml(d)}</div>
       <div class="tabpanel" role="tabpanel" id="pane-risks" aria-labelledby="tab-risks" ${state.tab!=="risks"?"hidden":""}><h2 class="printonly">Risks and market</h2>${risksHtml(d)}</div>
       <div class="tabpanel" role="tabpanel" id="pane-comps" aria-labelledby="tab-comps" ${state.tab!=="comps"?"hidden":""}>${compsHtml(d)}</div>
       <div class="tabpanel" role="tabpanel" id="pane-planning" aria-labelledby="tab-planning" ${state.tab!=="planning"?"hidden":""}>${planningHtml(d)}</div>
@@ -1118,21 +1387,38 @@ document.getElementById("quickForm").addEventListener("submit", async e => {
   if (url && !/^https?:\/\//i.test(url)){ $("#quickErr").textContent = "The link must start with https://"; return; }
   const price = num("#q-price"), gdv = num("#q-gdv");
   if (!price || !gdv){ $("#quickErr").textContent = "Enter the price and the value after works."; return; }
-  const commercial = $("#q-type").value === "nonresidential";
+  const ptype = $("#q-type").value, commercial = ptype === "nonresidential", isFlat = ptype === "flat";
+  const PLAN_GUESS = {
+    refurb: ["Refurbish", "none", "Internal works only, so no planning application. Building regulations apply to electrics, heating and structural work."],
+    bedroom: ["Extra bedroom inside", "none", "Rearranging rooms inside is not development, so no planning application. Building regulations apply (fire escape, ventilation)."],
+    garage: ["Convert the garage", "pd", "For a house, converting an attached garage internally is usually permitted development, unless a condition on the original permission removes it."],
+    rear: ["Rear extension", "pd", "For a house: single storey up to 3m deep (attached) or 4m (detached) without an application, or up to 6m or 8m with prior approval."],
+    loft: ["Loft conversion", "pd", "For a house: up to 40 m³ extra (terraced) or 50 m³ (semi or detached), no dormer facing the road, not in a conservation area."],
+    hmo: ["Small HMO (3 to 6 people)", "pd", "A house to a small HMO is permitted development unless the council has an Article 4 direction there. A licence may still be needed."],
+    flats: ["Split into flats", "full", "Turning one home into several needs full planning permission."],
+    commercial: ["Shop to homes", "prior_approval", "Class MA prior approval: the council checks light, space standards, flooding and noise. Must be finished within 3 years."]
+  };
+  const pg = PLAN_GUESS[$("#q-plan").value] || PLAN_GUESS.refurb;
+  let route = pg[1], reasons = [pg[2]];
+  if (isFlat && (route === "pd")){ route = "full"; reasons = ["Flats and maisonettes don't have householder permitted development rights, so this needs planning permission (and the freeholder's consent)."]; }
+  reasons.push("This is a first guess from your quick check. The full appraisal checks the conservation area, Article 4 and any conditions on the property.");
   const now = new Date().toISOString();
   const inputs = Object.assign({}, DEFAULT_INPUTS, { purchasePrice: price, gdv, worksCost: num("#q-works"), monthlyRent: num("#q-rent") || DEFAULT_INPUTS.monthlyRent,
     monthsWorks: num("#q-months") || 6, buyerType: commercial ? "nonresidential" : "additional", targetMarginPct: R().minMarginPct || 20 });
+  const schemes = [{ id: "a", name: pg[0], summary: "From your quick check", byUser: true,
+    overrides: { worksCost: inputs.worksCost, gdv: inputs.gdv, monthlyRent: inputs.monthlyRent, monthsWorks: inputs.monthsWorks },
+    planning: { route, label: "Likely: " + ROUTES[route].label, reasons, checks: [] }, layout: {}, worksItems: [] }];
   if (commercial){ inputs.bridgeLtv = 65; inputs.bridgeRate = 0.95; }
   const id = "q" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const deal = { address: $("#q-address").value.trim(), url, status: "Screening", created: now.slice(0, 10), updated: now.slice(0, 10), notes: "",
-    facts: { asking: price }, inputs,
+    facts: { asking: price, type: isFlat ? "Flat" : commercial ? "Commercial" : "House" }, inputs, schemes,
     verdict: { level: "", headline: "Quick check from your figures", text: "These numbers are the ones you entered, checked against your rules. Claude's full appraisal (comparables, planning, risks, works and exit options) replaces them in the next hourly run." },
     appraisal: { state: url ? "queued" : "done", requested: now, urgent: true, note: "Quick check entered by hand: price " + price + ", value after works " + gdv + ", works " + inputs.worksCost + ", rent " + inputs.monthlyRent + ". Treat these as the user's starting assumptions." } };
   try{
     await queueWrite(() => state.db.doc("deals/" + id).set(deal));
     $("#quickDlg").close(); $("#quickForm").reset(); $("#addUrls").value = "";
     if (!state.deals.find(x => x.id === id)) state.deals.unshift(Object.assign({ id }, JSON.parse(JSON.stringify(deal))));
-    state.currentId = id; state.compare = false; state.tab = "overview"; state.filter = "All";
+    state.currentId = id; state.compare = false; state.tab = "layout"; state.filter = "All";
     showBanner(url ? "Rated from your figures. The full appraisal comes in the next hourly run, ahead of anything else waiting." : "Rated from your figures. Add a listing link and press Re-appraise if you want Claude's full appraisal.");
     renderAll(); setTimeout(showDetailView, 0);
   }catch(err){ $("#quickErr").textContent = "Couldn't save just now. Try again."; }
@@ -1195,6 +1481,12 @@ function showBanner(msg){ const b = $("#banner"); b.textContent = msg; b.hidden 
 
 async function saveFields(id, patch, stateEl){
   if (!state.db || state.readOnly || id === "example") return;
+  const real = state.deals.find(x => x.id === id);
+  if (real && (patch.inputs || patch.worksItems)){
+    patch = Object.assign({}, patch);
+    if (Array.isArray(real.schemes) && real.schemes.length){ delete patch.worksItems; patch.inputs = real.inputs; patch.schemes = real.schemes; }
+    else { if (patch.inputs) patch.inputs = real.inputs; if (patch.worksItems) patch.worksItems = real.worksItems; }
+  }
   if (stateEl) stateEl.textContent = "Saving…";
   try{
     await queueWrite(() => state.db.doc("deals/" + id).update(patch));
@@ -1278,6 +1570,7 @@ document.addEventListener("input", e => {
     const tiles = document.querySelector(".tiles"); if (tiles) tiles.outerHTML = tilesHtml(d, r);
     refreshMarginPanel(d, r);
     const cp = document.getElementById("checkPanel"); if (cp) cp.outerHTML = checkPanelHtml(d);
+    const pp = document.getElementById("plansPanel"); if (pp) pp.outerHTML = plansPanelHtml(d);
     renderList();
     clearTimeout(inputTimer);
     const id = d.id, inputs = d.inputs;
@@ -1374,6 +1667,7 @@ function showApp(session){
     channel = SB.channel("deals-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "deals" }, () => refresh())
       .on("postgres_changes", { event: "*", schema: "public", table: "settings" }, () => refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "floorplans" }, () => { const v = currentDeal(); if (v && !v.example){ delete state.fp[v.id]; loadFloorplans(v.id); } })
       .subscribe();
   }
   SB.rpc("is_allowed").then(({ data }) => {
