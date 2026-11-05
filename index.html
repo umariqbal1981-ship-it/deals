@@ -457,7 +457,7 @@ ul.pchecks li{display:grid;grid-template-columns:18px 1fr;gap:6px}
 <script>
 "use strict";
 const STATUSES = ["Screening","Viewing booked","Offer made","Bought","Passed"];
-const DEFAULT_INPUTS = {
+const DEFAULT_INPUTS = { exchangeDepositPct: 10,
   purchasePrice: 250000, buyerType: "additional", legalFees: 1800, survey: 750,
   worksCost: 40000, contingencyPct: 15, profFees: 4000, monthsWorks: 6, holdingMonthly: 250,
   financeType: "bridge", bridgeLtv: 70, bridgeRate: 0.9, bridgeArrFee: 2, bridgeExitFee: 0, lenderCosts: 2000,
@@ -539,8 +539,18 @@ function appraise(raw){
   const tax = Math.max(0, (rent - opex) * n("taxRatePct")/100 - interest * n("financeCreditPct")/100);
   const cashflowAfterTax = cashflow - tax;
 
+  // Cash to buy
+  const deposit = price - loan;
+  const lenderUpfront = bridging ? loan * n("bridgeArrFee")/100 + n("lenderCosts") : 0;
+  const atCompletion = deposit + acq + lenderUpfront;
+  const exchange = price * (i.exchangeDepositPct == null || i.exchangeDepositPct === "" ? 10 : n("exchangeDepositPct"))/100;
+  const commercial = i.buyerType === "nonresidential";
+  const mortPct = commercial ? 35 : 100 - n("btlLtv");
+  const buy = { deposit, depositPct: price ? deposit/price : NaN, exchange, lenderUpfront, atCompletion, peak: cashSell,
+    mortgageDeposit: price * mortPct/100, mortgagePct: mortPct, commercial };
+
   return {
-    i, price, stamp, acq, contingency, works, loan,
+    i, price, stamp, acq, contingency, works, loan, buy,
     sell: {months:mSell, finance:finSell, holding:holdSell, cost:costSell, saleCosts, profit, margin: costSell ? profit/costSell : NaN, cash:cashSell, roce: cashSell > 0 ? profit/cashSell : NaN},
     hold: {months:mHold, finance:finHold, holding:holdHold, cost:costHold, newLoan, refi, leftIn, rent, opex, interest, cashflow, tax, cashflowAfterTax,
       grossYield: n("gdv") ? rent/n("gdv") : NaN, yieldOnCost: costHold ? (rent-opex)/costHold : NaN,
@@ -618,6 +628,7 @@ function tilesHtml(d, r){
   const cfCls = r.hold.cashflow > 0 ? "good" : "bad";
   return `<div class="tiles">
     <div class="tile"><div class="k">Purchase price</div><div class="v">${gbp(r.price)}</div><div class="s">Asking ${gbp(d.facts && d.facts.asking)}</div></div>
+    <div class="tile"><div class="k">Deposit to buy</div><div class="v">${gbp(r.buy.deposit)}</div><div class="s">${r.loan ? pct(r.buy.depositPct,0) + " down" : "cash purchase"} · ${gbp(r.buy.atCompletion)} with Stamp Duty and fees</div></div>
     <div class="tile"><div class="k">Value after works</div><div class="v">${gbp(r.i.gdv)}</div><div class="s">from sold comparables</div></div>
     <div class="tile"><div class="k">All-in cost (sell route)</div><div class="v">${gbp(r.sell.cost)}</div><div class="s">incl. Stamp Duty ${gbp(r.stamp)}</div></div>
     <div class="tile ${sellCls}"><div class="k">Profit if sold</div><div class="v">${gbp(r.sell.profit)}</div><div class="s">${pct(m)} on cost, before tax</div></div>
@@ -1488,7 +1499,7 @@ const FIELDS = [
   ["Purchase", [
     ["purchasePrice","Purchase price (£)"],
     ["buyerType","Stamp Duty basis","select wide",[["additional","Additional property (+5%)"],["standard","Standard rates"],["nonres_additional","Non-UK resident, additional (+7%)"],["nonresidential","Commercial / mixed-use (0/2/5%)"]]],
-    ["legalFees","Legal fees (£)"],["survey","Survey (£)"]]],
+    ["legalFees","Legal fees (£)"],["survey","Survey (£)"],["exchangeDepositPct","Deposit paid at exchange (% of price)"]]],
   ["Works", [
     ["worksCost","Build and refurb cost (£)"],["contingencyPct","Contingency (%)"],["profFees","Architect, planning, building control, party wall (£)"],
     ["monthsWorks","Months to finish works"],["holdingMonthly","Holding costs while empty (£/month)"]]],
@@ -1521,7 +1532,19 @@ function ledgerHtml(r){
   const sens = [["Base case",{}],["Value 5% lower",{gdv:r.i.gdv*0.95}],["Value 10% lower",{gdv:r.i.gdv*0.9}],["Works 20% over",{worksCost:r.i.worksCost*1.2}],["Both: value −10%, works +20%",{gdv:r.i.gdv*0.9,worksCost:r.i.worksCost*1.2}],["Three months' delay",{monthsWorks:Number(r.i.monthsWorks)+3}]]
     .map(([l,ch]) => { const x = appraise(Object.assign({}, r.i, ch)); return `<tr><td>${l}</td><td class="r num">${gbp(x.sell.profit)}</td><td class="r num">${pct(x.sell.margin)}</td><td class="r num">${gbp(x.hold.leftIn)}</td></tr>`; }).join("");
   const roi = r.hold.roi === Infinity ? "infinite (no cash left in)" : pct(r.hold.roi);
+  const b = r.buy, bridging = r.i.financeType === "bridge";
   return `
+  <div class="panel"><h3>Cash to buy</h3><table class="ledger"><tbody>
+    ${row(`Deposit at exchange (${esc(r.i.exchangeDepositPct ?? 10)}%, part of the deposit)`, b.exchange, "sub")}
+    ${row(bridging ? `Deposit (${pct(b.depositPct,0)} of the price; the bridging loan covers ${esc(r.i.bridgeLtv)}%)` : "Purchase price (cash)", b.deposit)}
+    ${row("Stamp Duty", r.stamp, "sub")}${row("Legal and survey", r.acq - r.stamp, "sub")}
+    ${bridging ? row("Bridging arrangement fee, valuation and lender legal", b.lenderUpfront, "sub") : ""}
+    ${row("Cash needed on completion day", b.atCompletion, "total")}
+    ${row("Plus works, fees, interest and holding until sale", b.peak - b.atCompletion, "sub")}
+    ${row("Total cash you need over the project", b.peak, "total")}
+    <tr class="sub"><td>${b.commercial ? "With a commercial mortgage instead (lenders usually want about 35% down)" : `With a buy-to-let mortgage instead (${esc(b.mortgagePct)}% down)`}</td><td>${gbp(b.mortgageDeposit)}</td></tr>
+  </tbody></table>
+  <p class="small muted" style="margin:6px 0 0">The deposit at exchange is usually 10% (always 10% at auction, due on the day, with completion in 28 days). Bridging lenders often take the arrangement fee out of the loan and may hold back interest, which would raise the cash you need on the day. Many buy-to-let lenders won't lend on a property that needs major works until it's done.</p></div>
   <div class="panel"><h3>Costs to complete</h3><table class="ledger"><tbody>
     ${row("Purchase price", r.price)}
     ${row("Stamp Duty", r.stamp, "sub")}${row("Legal and survey", r.acq - r.stamp, "sub")}
