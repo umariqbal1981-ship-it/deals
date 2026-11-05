@@ -581,7 +581,14 @@ function renderFilters(){
   $("#filters").innerHTML = opts.map(o => `<button type="button" class="chip" data-filter="${esc(o)}" aria-pressed="${state.filter===o}">${esc(o)}</button>`).join("");
 }
 
-const isQueued = d => !!(d.appraisal && (d.appraisal.state === "queued" || d.appraisal.state === "failed"));
+const isQueued = d => !!(d.appraisal && ["queued", "running", "failed"].includes(d.appraisal.state));
+function queueLabel(d){
+  const a = d.appraisal || {}, hrs = a.requested ? (Date.now() - Date.parse(a.requested)) / 36e5 : 0;
+  if (a.state === "failed") return "Needs your help";
+  if (a.state === "running") return "Being appraised now";
+  if (hrs > 3) return "Delayed";
+  return d.inputs ? "Re-appraisal requested" : "Waiting for appraisal";
+}
 function visibleDeals(){
   const list = state.deals.length ? state.deals : [EXAMPLE];
   if (state.filter === "All") return list;
@@ -599,7 +606,7 @@ function renderList(){
       const failed = d.appraisal.state === "failed";
       return `<button type="button" class="deal-item queued" data-id="${esc(d.id)}" aria-current="${d.id===state.currentId}">
         <span class="addr">${esc(d.address || "New listing")}</span>
-        <span class="row"><span>${esc(hostLabel(d.url))}</span><span class="pill p-wait">${failed ? "Needs your help" : d.inputs ? "Re-appraisal requested" : "Waiting for appraisal"}</span></span>
+        <span class="row"><span>${esc(hostLabel(d.url))}</span><span class="pill p-wait">${esc(queueLabel(d))}</span></span>
       </button>`;
     }
     const bi = bestPlanIndex(d), bp = plansOf(d)[bi], vd = view(d, bi);
@@ -1593,7 +1600,8 @@ function renderDetail(){
       <div class="head"><h2 style="font-size:1.25rem">${esc(d.address || "New listing")}</h2>
         <div class="head-actions"><button class="btn danger" id="btnDelete" type="button" ${state.readOnly?"disabled":""}>Remove</button></div></div>
       ${safeUrl(d.url)?`<a href="${esc(d.url)}" target="_blank" rel="noopener" class="small">${esc(d.url)}</a>`:""}
-      <div class="verdict v-warn"><strong>${failed ? "Couldn't appraise this yet" : "Waiting for appraisal"}</strong>${esc(failed ? (a.message || "The listing couldn't be read. Paste the description and a floor plan screenshot in the chat.") : `Added ${a.requested ? a.requested.slice(0,10) : ""}. Claude checks for new links every hour from 7am to 10pm and fills in this page.`)}</div>
+      <div class="verdict v-warn"><strong>${failed ? "Couldn't appraise this yet" : esc(queueLabel(d))}</strong>${esc(failed ? (a.message || "The listing couldn't be read. Paste the description and a floor plan screenshot in the chat.") : a.state === "running" ? `Claude started on this at ${a.started ? new Date(a.started).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit"}) : "the last run"}. It usually takes 15 to 40 minutes; this page fills in when it's done.` : `Added ${a.requested ? new Date(a.requested).toLocaleString("en-GB", {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) : ""}. Claude checks for new links every hour at 27 minutes past, 7am to 10pm${a.attempts ? `, and has tried ${a.attempts} time${a.attempts > 1 ? "s" : ""} so far` : ""}.`)}
+        ${(failed || queueLabel(d) === "Delayed") && !state.readOnly ? `<p style="margin:8px 0 0"><button class="btn" type="button" id="btnRetry">Try again next run</button></p>` : ""}</div>
       ${a.note?`<p class="small"><b>Your note:</b> ${esc(a.note)}</p>`:""}
     </div>`;
     return;
@@ -1809,6 +1817,14 @@ if ("serviceWorker" in navigator && location.protocol === "https:"){
 /* ---------- Saving ---------- */
 let inputTimer = null, notesTimer = null, writing = Promise.resolve();
 function queueWrite(fn){ writing = writing.then(fn, fn); return writing; }
+document.addEventListener("click", async e => {
+  if (e.target && e.target.id === "btnRetry"){
+    const d = state.deals.find(x => x.id === state.currentId); if (!d) return;
+    const a = Object.assign({}, d.appraisal || {}, { state: "queued", urgent: true, message: null, attempts: 0, requested: new Date().toISOString() });
+    try { await queueWrite(() => state.db.doc("deals/" + d.id).update({ appraisal: a })); showBanner("Queued again for the next run at 27 minutes past the hour."); } catch(err) { showBanner("Couldn't save. Check your connection and try again."); }
+    return;
+  }
+});
 function showBanner(msg){ const b = $("#banner"); b.textContent = msg; b.hidden = !msg; }
 
 async function saveFields(id, patch, stateEl){
